@@ -10,6 +10,10 @@ CELLCOLS=14
 class MyRob(CRobLinkAngs):
     def __init__(self, rob_name, rob_id, angles, host):
         CRobLinkAngs.__init__(self, rob_name, rob_id, angles, host)
+        self.start = True
+        self.initialPos = None
+        self.currentPos = None
+        self.registeredPos = []
 
     # In this map the center of cell (i,j), (i in 0..6, j in 0..13) is mapped to labMap[i*2][j*2].
     # to know if there is a wall on top of cell(i,j) (i in 0..5), check if the value of labMap[i*2+1][j*2] is space or not
@@ -61,71 +65,32 @@ class MyRob(CRobLinkAngs):
                 if self.measures.returningLed==True:
                     self.setReturningLed(False)
                 self.wander()
-            
-    """
-    def wander(self):
-        center_id = 0
-        left_id = 1
-        right_id = 2
-        back_id = 3
-        if    self.measures.irSensor[center_id] > 5.0\
-           or self.measures.irSensor[left_id]   > 5.0\
-           or self.measures.irSensor[right_id]  > 5.0\
-           or self.measures.irSensor[back_id]   > 5.0:
-            print('Rotate left')
-            self.driveMotors(-0.1,+0.1)
-        elif self.measures.irSensor[left_id]> 2.7:
-            print('Rotate slowly right')
-            self.driveMotors(0.1,0.0)
-        elif self.measures.irSensor[right_id]> 2.7:
-            print('Rotate slowly left')
-            self.driveMotors(0.0,0.1)
-        else:
-            print('Go')
-            self.driveMotors(0.1,0.1)   
-    """
-    #wander version 1
-    '''
-    def wander(self):
-        center_id = 0
-        left_id = 1
-        right_id = 2
-        back_id = 3
-        if self.measures.irSensor[back_id] > 4:
-                self.driveMotors(-0.15,-0.15)
-        elif self.measures.irSensor[right_id] > 3:
-            self.driveMotors(-0.15,0.15)
-            print('Left')
-        elif self.measures.irSensor[left_id] > 3:
-            self.driveMotors(0.15,-0.15)
-            print('Right')
-        elif self.measures.irSensor[center_id] > 2.5 and self.measures.irSensor[left_id] > 2.5:
-            self.driveMotors(0.15,-0.15)
-            print('Right corner')
-        elif self.measures.irSensor[center_id] > 2.5 and self.measures.irSensor[right_id] > 2.5:
-            self.driveMotors(-0.15,0.15)
-            print('Left corner')
-        elif self.measures.irSensor[center_id] < 3:
-            self.driveMotors(0.15,0.15)
-            print('Front')
-        else:
-            if self.measures.irSensor[right_id] > self.measures.irSensor[left_id]:
-                self.driveMotors(-0.15,0.15)
-            elif self.measures.irSensor[left_id] > self.measures.irSensor[right_id]:
-                self.driveMotors(0.15,-0.15)
-            print('Back')
-    
-    '''
+
 
     def wander(self):
+        x = floor(self.measures.x)
+        y = floor(self.measures.y)
+
+        if self.start:
+            self.start = False
+            self.initialPos = (x,y)
+            self.currentPos = (x,y,"X")
+            self.registeredPos.append(self.currentPos)
+
+        if (x != self.currentPos[0] or y != self.currentPos[1]):
+            self.currentPos = (x,y,"X")
+            if  self.currentPos not in self.registeredPos:
+                self.registeredPos.append(self.currentPos)
+
         center_id = 0
         left_id = 1
         right_id = 2
         back_id = 3
-        self.measures.collision
+        
         if self.measures.collision:
             self.driveMotors(-0.05,-0.15)
             print("collision")
+            #print(str(list(sorted(self.registeredPos,key=lambda k: [k[0],k[1]]))))
         elif (self.measures.collision and self.measures.irSensor[right_id] < self.measures.irSensor[left_id]) or \
             (self.measures.irSensor[center_id] > 4 and self.measures.irSensor[right_id] < self.measures.irSensor[left_id]):
             self.driveMotors(-0.05,-0.15)
