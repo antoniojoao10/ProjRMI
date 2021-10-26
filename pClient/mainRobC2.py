@@ -3,6 +3,9 @@ import sys
 from croblink import *
 from math import *
 import xml.etree.ElementTree as ET
+from array import *
+import numpy as np
+
 
 CELLROWS=7
 CELLCOLS=14
@@ -65,7 +68,26 @@ class MyRob(CRobLinkAngs):
                 if self.measures.returningLed==True:
                     self.setReturningLed(False)
                 self.wander()
+    
+    def mapping(self):
+        open('mapping.out', 'w').close()
+        rows, cols = (27, 56)
+        arr = [[" " for i in range(cols)] for j in range(rows)]
+        
+        for i in self.registeredPos:
+            lin = 26 - (i[1]-self.initialPos[1] + 10) 
+            col = i[0]-self.initialPos[0] + 2 + 25
+            print(str(lin) + "\t" + str(col))
+            arr[lin][col]=i[2]
 
+        fout= open("mapping.out","w")
+        tmp = ""
+        for row in arr:
+            for line in row:
+                tmp += line
+            tmp+="\n"
+        fout.write(tmp)
+        fout.close()
 
     def wander(self):
         x = floor(self.measures.x)
@@ -74,29 +96,31 @@ class MyRob(CRobLinkAngs):
         if self.start:
             self.start = False
             self.initialPos = (x,y)
-            self.currentPos = (x,y,"X")
+            self.currentPos = (x,y,"I")
             self.registeredPos.append(self.currentPos)
 
         if (x != self.currentPos[0] or y != self.currentPos[1]):
             self.currentPos = (x,y,"X")
             if  self.currentPos not in self.registeredPos:
                 self.registeredPos.append(self.currentPos)
-
+        
         center_id = 0
         left_id = 1
         right_id = 2
         back_id = 3
+
+        self.mapping()
+
         
-        if self.measures.collision:
-            self.driveMotors(-0.05,-0.15)
-            print("collision")
             #print(str(list(sorted(self.registeredPos,key=lambda k: [k[0],k[1]]))))
-        elif (self.measures.collision and self.measures.irSensor[right_id] < self.measures.irSensor[left_id]) or \
+        if (self.measures.collision and self.measures.irSensor[right_id] < self.measures.irSensor[left_id]) or \
             (self.measures.irSensor[center_id] > 4 and self.measures.irSensor[right_id] < self.measures.irSensor[left_id]):
             self.driveMotors(-0.05,-0.15)
-        if (self.measures.collision and self.measures.irSensor[right_id] > self.measures.irSensor[left_id]) or\
+            print("collision left")
+        elif (self.measures.collision and self.measures.irSensor[right_id] > self.measures.irSensor[left_id]) or\
             (self.measures.irSensor[center_id] > 4 and self.measures.irSensor[right_id] > self.measures.irSensor[left_id]):
-            self.driveMotors(-0.15,0.15)
+            self.driveMotors(-0.15,-0.05)
+            print("collision right")
         elif self.measures.irSensor[center_id] > 10:
             self.driveMotors(-0.15,-0.15)
         elif self.measures.irSensor[right_id] > 10:
