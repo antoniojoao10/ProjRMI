@@ -9,8 +9,11 @@ import numpy as np
 
 CELLROWS=7
 CELLCOLS=14
+collLeft=0
+collRight=0
 
 class MyRob(CRobLinkAngs):
+    
     def __init__(self, rob_name, rob_id, angles, host):
         CRobLinkAngs.__init__(self, rob_name, rob_id, angles, host)
         self.start = True
@@ -34,6 +37,9 @@ class MyRob(CRobLinkAngs):
 
         state = 'stop'
         stopped_state = 'run'
+
+        collLeft=False
+        collRight=False
 
         while True:
             self.readSensors()
@@ -75,10 +81,13 @@ class MyRob(CRobLinkAngs):
         arr = [[" " for i in range(cols)] for j in range(rows)]
         
         for i in self.registeredPos:
-            lin = 26 - (i[1]-self.initialPos[1] + 10) 
+            lin = 23 - (i[1]-self.initialPos[1] + 10) 
             col = i[0]-self.initialPos[0] + 2 + 25
-            print(str(lin) + "\t" + str(col))
-            arr[lin][col]=i[2]
+            #print(str(lin) + "\t" + str(col))
+            if 26<=lin<=10 or 54<=col<=24:
+                continue
+            if arr[lin][col] == " " or arr[lin][col]!="I":
+                arr[lin][col]=i[2]
 
         fout= open("mapping.out","w")
         tmp = ""
@@ -100,26 +109,54 @@ class MyRob(CRobLinkAngs):
             self.registeredPos.append(self.currentPos)
 
         if (x != self.currentPos[0] or y != self.currentPos[1]):
+            if 135 > self.measures.compass > 45 or -135 < self.measures.compass < -45:
+                self.currentPos = (x-1,y,"X")
+                if  self.currentPos not in self.registeredPos:
+                    self.currentPos = (x-1,y,"|")
+                    self.registeredPos.append(self.currentPos)
+                self.currentPos = (x+1,y,"X")
+                if  self.currentPos not in self.registeredPos:
+                    self.currentPos = (x+1,y,"|")
+                    self.registeredPos.append(self.currentPos)
+            elif -45 < self.measures.compass < 45 or (-135 > self.measures.compass > -180 and 180 < self.measures.compass < 135):
+                self.currentPos = (x,y+1,"X")
+                if  self.currentPos not in self.registeredPos:
+                    self.currentPos = (x,y+1,"-")
+                    self.registeredPos.append(self.currentPos)
+                self.currentPos = (x,y-1,"X")
+                if  self.currentPos not in self.registeredPos:
+                    self.currentPos = (x,y-1,"-")
+                    self.registeredPos.append(self.currentPos)
             self.currentPos = (x,y,"X")
-            if  self.currentPos not in self.registeredPos:
+            if  self.currentPos not in self.registeredPos and (x,y,"I") not in self.registeredPos:
                 self.registeredPos.append(self.currentPos)
-        
+    
         center_id = 0
         left_id = 1
         right_id = 2
         back_id = 3
 
         self.mapping()
-
         
+        global collLeft
+        global collRight
+        
+        if collLeft>3:
+            self.driveMotors(0.15,0.05)
+            collLeft=0
+        elif collRight>3:
+            self.driveMotors(0.05,0.15)
+            collRight=0
             #print(str(list(sorted(self.registeredPos,key=lambda k: [k[0],k[1]]))))
-        if (self.measures.collision and self.measures.irSensor[right_id] < self.measures.irSensor[left_id]) or \
-            (self.measures.irSensor[center_id] > 4 and self.measures.irSensor[right_id] < self.measures.irSensor[left_id]):
+        elif (self.measures.collision and self.measures.irSensor[right_id] < self.measures.irSensor[left_id] and collRight==0) or \
+            (self.measures.irSensor[center_id] > 4 and self.measures.irSensor[right_id] < self.measures.irSensor[left_id] and collRight==0) or collLeft!=0:
             self.driveMotors(-0.05,-0.15)
+            collLeft +=1
             print("collision left")
         elif (self.measures.collision and self.measures.irSensor[right_id] > self.measures.irSensor[left_id]) or\
-            (self.measures.irSensor[center_id] > 4 and self.measures.irSensor[right_id] > self.measures.irSensor[left_id]):
+            (self.measures.irSensor[center_id] > 4 and self.measures.irSensor[right_id] > self.measures.irSensor[left_id] or collRight!=0):
             self.driveMotors(-0.15,-0.05)
+            collRight +=1
             print("collision right")
         elif self.measures.irSensor[center_id] > 10:
             self.driveMotors(-0.15,-0.15)
@@ -143,6 +180,8 @@ class MyRob(CRobLinkAngs):
             print('Left back')
         elif self.measures.irSensor[center_id] < 3:
             self.driveMotors(0.15,0.15)
+            collLeft=False
+            collRight=False
             print('Front')
         else:
             if self.measures.irSensor[right_id] > self.measures.irSensor[left_id]:
