@@ -22,6 +22,7 @@ class MyRob(CRobLinkAngs):
         self.currentPos = None
         self.registeredPos = []
         self.rotating = 0
+        self.exploration = set()
 
     # In this map the center of cell (i,j), (i in 0..6, j in 0..13) is mapped to labMap[i*2][j*2].
     # to know if there is a wall on top of cell(i,j) (i in 0..5), check if the value of labMap[i*2+1][j*2] is space or not
@@ -85,7 +86,7 @@ class MyRob(CRobLinkAngs):
         for i in self.registeredPos:
             lin = 23 - (i[1]-self.initialPos[1] + 10)
             col = i[0]-self.initialPos[0] + 2 + 25
-            #print(str(lin) + "\t" + str(col))
+            # print(str(lin) + "\t" + str(col))
             if 26 <= lin <= 10 or 54 <= col <= 24:
                 continue
             if arr[lin][col] == " " or arr[lin][col] != "I":
@@ -101,73 +102,96 @@ class MyRob(CRobLinkAngs):
         fout.close()
 
     def wander(self):
-        print(self.rotating)
-        print(str(self.measures.compass))
+        front = self.measures.irSensor[0]
+        left = self.measures.irSensor[1]
+        right = self.measures.irSensor[2]
+        back = self.measures.irSensor[3]
+
+        x = floor(self.measures.x)
+        y = floor(self.measures.y)
 
         angle = self.measures.compass + 180
         if angle > 180:
             angle = angle - 360
 
+        print(angle)
+
+        # if it's rotating, keep rotating
         if self.rotating == 1:
             self.rotating = self.rotateLeft()
         elif self.rotating == 2:
             self.rotating = self.rotateRight()
         else:
-            if self.measures.irSensor[0] > 2:
-                self.driveMotors(-0.01, 0.01)
-                self.rotating = self.rotateLeft()
+            if front > 2:
+                if right > 1:
+                    self.driveMotors(-0.01, 0.01)
+                    self.rotating = self.rotateLeft()
+                elif left > 1:
+                    self.driveMotors(0.01, -0.01)
+                    self.rotating = self.rotateRight()
+                else:
+                    if (x, y) not in self.registeredPos:
+                        self.driveMotors(0.01, -0.01)
+                        self.rotating = self.rotateRight()
+                    else:
+                        self.driveMotors(-0.01, 0.01)
+                        self.rotating = self.rotateLeft()
             else:
+                # if it's going forward, but it's up/down/left/right make adjustment to the closest direction
                 if angle in range(-179, -150) or angle in range(-89, -60) or \
                         angle in range(1, 30) or angle in range(91, 120):
-                    print("right adjustment")
+                    # print("right adjustment")
                     self.rotateRight()
                 elif angle in range(150, 180) or angle in range(-120, -90) or\
                         angle in range(-30, 0) or angle in range(60, 90):
-                    print("left adjustment"+str("\n"))
+                    # print("left adjustment")
                     self.rotateLeft()
                 else:
                     self.driveMotors(0.15, 0.15)
 
+            if (x, y) not in self.registeredPos:
+                self.registeredPos.append((x, y))
+
     def rotateLeft(self):
         rotate = False
+        slow_rotation_angle = 30
 
         angle = self.measures.compass + 180
         if angle > 180:
             angle = angle - 360
 
-        if (angle > -180 and angle < -90):
-            rotate = True
-        elif (angle > -90 and angle < 0):
-            rotate = True
-        elif (angle > 0 and angle < 90):
-            rotate = True
-        elif (angle > 90 and angle < 180):
+        if angle not in [-90, 0, 90, 180]:
             rotate = True
 
         if rotate:
-            self.driveMotors(-0.01, 0.01)
+            if 0 < 0 - angle < slow_rotation_angle or 0 < -90 - angle < slow_rotation_angle or\
+                    0 < 180 - angle < slow_rotation_angle or 0 < 90 - angle < slow_rotation_angle:
+                print("Rotating slowly left")
+                self.driveMotors(-0.01, 0.01)
+            else:
+                self.driveMotors(-0.05, 0.05)
             return 1
 
         return 0
 
     def rotateRight(self):
         rotate = False
+        slow_rotation_angle = 30
 
         angle = self.measures.compass + 180
         if angle > 180:
             angle = angle - 360
 
-        if angle == 180 or (angle < 180 and angle > 90):
-            rotate = True
-        elif angle == 90 or (angle < 90 and angle > 0):
-            rotate = True
-        elif angle == 0 or (angle < 0 and angle > -90):
-            rotate = True
-        elif angle == -90 or (angle < -90 and angle > -180):
+        if angle not in [-90, 0, 90, 180]:
             rotate = True
 
         if rotate:
-            self.driveMotors(0.01, -0.01)
+            if 0 < angle - 0 < slow_rotation_angle or 0 < angle - -90 < slow_rotation_angle or\
+                    0 < angle - -180 < slow_rotation_angle or 0 < angle - 90 < slow_rotation_angle:
+                print("Rotating slowly right")
+                self.driveMotors(0.01, -0.01)
+            else:
+                self.driveMotors(0.05, -0.05)
             return 2
 
         return 0
@@ -220,7 +244,7 @@ for i in range(1, len(sys.argv), 2):
         quit()
 
 if __name__ == '__main__':
-    rob = MyRob(rob_name, pos, [0.0, 60.0, -60.0, 180.0], host)
+    rob = MyRob(rob_name, pos, [0.0, 90.0, -90.0, 180.0], host)
     if mapc != None:
         rob.setMap(mapc.labMap)
         rob.printMap()
