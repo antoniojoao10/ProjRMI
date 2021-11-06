@@ -24,7 +24,8 @@ class MyRob(CRobLinkAngs):
         self.rotating = 0
         self.node_connections = {}
         self.nodes_to_explore = set()
-        self.d_counter = 1
+        self.d_counter = 0
+        self.finished_rotation = False
 
     # In this map the center of cell (i,j), (i in 0..6, j in 0..13) is mapped to labMap[i*2][j*2].
     # to know if there is a wall on top of cell(i,j) (i in 0..5), check if the value of labMap[i*2+1][j*2] is space or not
@@ -109,8 +110,7 @@ class MyRob(CRobLinkAngs):
         right = self.measures.irSensor[2]
         back = self.measures.irSensor[3]
 
-        x = floor(self.measures.x)
-        y = floor(self.measures.y)
+        #currentPos = (floor(self.measures.x), floor(self.measures.y))
 
         angle = self.measures.compass + 180
         if angle > 180:
@@ -119,16 +119,19 @@ class MyRob(CRobLinkAngs):
         # if it's rotating, keep rotating
         if self.rotating == 1:
             self.rotating = self.rotateLeft()
+            self.finished_rotation = True
         elif self.rotating == 2:
             self.rotating = self.rotateRight()
+            self.finished_rotation = True
         else:
+            # if it's blocked while going forward, makes a turn
             if front > 2:
                 if right > 1:
-                    print("Left rotation")
+                    #print("Left rotation")
                     self.driveMotors(-0.01, 0.01)
                     self.rotating = self.rotateLeft()
                 elif left > 1:
-                    print("Right rotation")
+                    #print("Right rotation")
                     self.driveMotors(0.01, -0.01)
                     self.rotating = self.rotateRight()
                 else:
@@ -146,89 +149,199 @@ class MyRob(CRobLinkAngs):
                     if self.start:
                         self.start = False
 
-                        self.initialPos = (self.measures.x, self.measures.y)
+                        self.initialPos = (0, 0)
 
                         direction, coord = self.get_direction()
                         self.nextPos = self.add_coordinates(
                             self.initialPos, coord)
 
-                    self.driveMotors(0.1, 0.1)
+                        if back < 1:
+                            if direction == "up":
+                                self.nodes_to_explore.add(
+                                    self.add_coordinates(self.initialPos, (0, -1)))
+                            elif direction == "left":
+                                self.nodes_to_explore.add(
+                                    self.add_coordinates(self.initialPos, (1, 0)))
+                            elif direction == "right":
+                                self.nodes_to_explore.add(
+                                    self.add_coordinates(self.initialPos, (-1, 0)))
+                            elif direction == "down":
+                                self.nodes_to_explore.add(
+                                    self.add_coordinates(self.initialPos, (0, 1)))
 
-                    # when the robot "walks" 2 diameters a.k.a changes node
-                    if self.d_counter == 20:
-                        self.d_counter = 1
+                        self.add_connections(direction, self.initialPos)
+                        self.add_nodes_to_explore(direction, self.initialPos)
+                        self.registeredPos.append(self.initialPos)
+                        print("\n\nConnections", self.node_connections)
+                        print("\nExploration", self.nodes_to_explore)
+                    else:
 
-                    # when the robot "walks" 1 diameter
-                    if self.d_counter == 10:
-                        pass
+                        direction, coord = self.get_direction()
+
+                        self.driveMotors(0.1, 0.1)
+
+                        # when the robot "walks" 2 diameters a.k.a changes node
+                        if self.d_counter == 20:
+
+                            currentPos = self.nextPos
+                            #print("\n\n", currentPos)
+                            self.d_counter = 0
+                            self.add_connections(direction, currentPos)
+                            # print("\n\n", currentPos, "\nConnections",
+                            # self.node_connections)
+
+                            self.add_nodes_to_explore(
+                                direction, currentPos)
+                            #print("\nExploration", self.nodes_to_explore)
+
+                            if front < 1 and not self.finished_rotation:
+                                self.nextPos = self.add_coordinates(
+                                    currentPos, coord)
+
+                            if currentPos not in self.registeredPos:
+                                self.registeredPos.append(currentPos)
+
+                        if self.finished_rotation:
+                            self.finished_rotation = False
+                            self.nextPos = self.add_coordinates(
+                                self.nextPos, coord)
+
+                        print(self.nextPos)
+                        print("--------", front)
+
+                        # when the robot "walks" 1 diameter
+                        if self.d_counter == 10:
+                            pass
 
                     self.d_counter += 1
+                    # print(self.d_counter)
 
-            if (x, y) not in self.registeredPos:
-                self.registeredPos.append((x, y))
+    # while going forward adds place that have not been yet visited
+
+    def add_nodes_to_explore(self, direction, currentPos):
+        front = self.measures.irSensor[0]
+        left = self.measures.irSensor[1]
+        right = self.measures.irSensor[2]
+        back = self.measures.irSensor[3]
+
+        if currentPos in self.registeredPos:
+            return
+
+        if front > 1:
+            if direction == "up":
+                if right < 1 and left < 1:
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(currentPos, (1, 0)))
+            elif direction == "left":
+                if right < 1 and left < 1:
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(currentPos, (0, 1)))
+            elif direction == "right":
+                if right < 1 and left < 1:
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(currentPos, (0, -1)))
+            elif direction == "down":
+                if right < 1 and left < 1:
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(currentPos, (-1, 0)))
+        else:
+            if direction == "up":
+                if left < 1:
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(currentPos, (-1, 0)))
+                if right < 1:
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(currentPos, (1, 0)))
+            elif direction == "left":
+                if left < 1:
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(currentPos, (0, -1)))
+                if right < 1:
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(currentPos, (0, 1)))
+            elif direction == "right":
+                if left < 1:
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(currentPos, (0, 1)))
+                if right < 1:
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(currentPos, (0, -1)))
+            elif direction == "down":
+                if left < 1:
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(currentPos, (1, 0)))
+                if right < 1:
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(currentPos, (-1, 0)))
 
     # stores adjacents nodes to the current node that are not blocked by walls
-    def add_connections(self, direction):
+    def add_connections(self, direction, currentPos):
 
         front = self.measures.irSensor[0]
         left = self.measures.irSensor[1]
         right = self.measures.irSensor[2]
         back = self.measures.irSensor[3]
 
+        if currentPos in self.node_connections:
+            return
+        else:
+            self.node_connections[currentPos] = []
+
         if direction == "up":
             if front < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (0, 1))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (0, 1))]
             if left < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (-1, 0))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (-1, 0))]
             if right < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (1, 0))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (1, 0))]
             if back < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (0, -1))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (0, -1))]
         elif direction == "left":
             if front < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (-1, 0))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (-1, 0))]
             if left < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (0, -1))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (0, -1))]
             if right < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (0, 1))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (0, 1))]
             if back < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (1, 0))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (1, 0))]
         elif direction == "right":
             if front < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (1, 0))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (1, 0))]
             if left < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (0, 1))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (0, 1))]
             if right < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (0, -1))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (0, -1))]
             if back < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (-1, 0))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (-1, 0))]
         elif direction == "down":
             if front < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (0, -1))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (0, -1))]
             if left < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (1, 0))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (1, 0))]
             if right < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (-1, 0))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (-1, 0))]
             if back < 1:
-                self.node_connections[self.initialPos] += {
-                    [self.add_coordinates(self.initialPos, (0, 1))]}
+                self.node_connections[currentPos] += [
+                    self.add_coordinates(currentPos, (0, 1))]
 
     # returns the direction the robot is facing and a tuple with the coordinates to get to the next node
+
     def get_direction(self):
         angle = self.measures.compass + 180
         if angle > 180:
@@ -239,9 +352,9 @@ class MyRob(CRobLinkAngs):
         elif angle in [89, 90, 91]:
             return "down", (0, -1)
         elif angle in [179, 180, -179]:
-            return "right", (0, 1)
+            return "right", (1, 0)
         elif angle in [-91, -90, -89]:
-            return "up", (1, 0)
+            return "up", (0, 1)
         return 0
 
     # adds tuples with 2 variables
@@ -266,7 +379,7 @@ class MyRob(CRobLinkAngs):
         if rotate:
             if 0 < 0 - angle < slow_rotation_angle or 0 < -90 - angle < slow_rotation_angle or\
                     0 < 180 - angle < slow_rotation_angle or 0 < 90 - angle < slow_rotation_angle:
-                print("Rotating slowly left")
+                #print("Rotating slowly left")
                 self.driveMotors(-0.01, 0.01)
             else:
                 self.driveMotors(-0.05, 0.05)
@@ -288,7 +401,7 @@ class MyRob(CRobLinkAngs):
         if rotate:
             if 0 < angle - 0 < slow_rotation_angle or 0 < angle - -90 < slow_rotation_angle or\
                     0 < angle - -180 < slow_rotation_angle or 0 < angle - 90 < slow_rotation_angle:
-                print("Rotating slowly right")
+                #print("Rotating slowly right")
                 self.driveMotors(0.01, -0.01)
             else:
                 self.driveMotors(0.05, -0.05)
