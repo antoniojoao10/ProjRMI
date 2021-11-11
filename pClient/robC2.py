@@ -21,13 +21,12 @@ class MyRob(CRobLinkAngs):
         self.initialPos = None
         self.currentPos = None
         self.nextPos = None
-        self.registeredPos = []
+        self.registeredPos = set()
         self.rotating = 0
         self.node_connections = {}
         self.nodes_to_explore = set()
-        self.d_counter = 0
         self.finished_rotation = False
-        self.is_near_flag = True
+        self.before_rotation = True
 
     # In this map the center of cell (i,j), (i in 0..6, j in 0..13) is mapped to labMap[i*2][j*2].
     # to know if there is a wall on top of cell(i,j) (i in 0..5), check if the value of labMap[i*2+1][j*2] is space or not
@@ -110,32 +109,71 @@ class MyRob(CRobLinkAngs):
         # if it's rotating, keep rotating
         if self.rotating == 1:
             self.rotating = self.rotateLeft()
+            self.finished_rotation = True
         elif self.rotating == 2:
             self.rotating = self.rotateRight()
+            self.finished_rotation = True
         else:
             front = self.measures.irSensor[0]
             left = self.measures.irSensor[1]
             right = self.measures.irSensor[2]
             back = self.measures.irSensor[3]
 
+            direction, coord = self.get_direction()
+
             # if it's blocked while going forward, makes a turn
             if front > 2:
                 if right > 1:
-                    # print("Left rotation")
-                    self.driveMotors(-0.01, 0.01)
-                    self.rotating = self.rotateLeft()
-                elif left > 1:
-                    # print("Right rotation")
-                    self.driveMotors(0.01, -0.01)
-                    self.rotating = self.rotateRight()
-                else:
-                    direction, coord = self.get_direction()
-
-                    self.nodes_to_explore.add(
-                        self.add_coordinates(self.currentPos, coord[2]))
+                    if direction is not "None":
+                        self.nextPos = self.add_coordinates(
+                            self.currentPos, coord[1])
 
                     self.driveMotors(-0.15, 0.15)
                     self.rotating = self.rotateLeft()
+                elif left > 1:
+                    if direction is not "None":
+                        self.nextPos = self.add_coordinates(
+                            self.currentPos, coord[2])
+
+                    self.driveMotors(0.15, -0.15)
+                    self.rotating = self.rotateRight()
+                else:
+
+                    if self.before_rotation:
+                        self.before_rotation = False
+
+                        self.currentPos = self.nextPos
+
+                        if self.currentPos in self.nodes_to_explore:
+                            self.nodes_to_explore.remove(self.currentPos)
+
+                        self.add_connections(coord, self.currentPos)
+                        self.add_nodes_to_explore(coord, self.currentPos)
+
+                        self.nextPos = self.add_coordinates(
+                            self.currentPos, coord[0])
+
+                        self.nodes_to_explore = set(
+                            [node for node in self.nodes_to_explore if node not in self.node_connections])
+
+                        print("\n\nUpdate\t3")
+                        print("Current Pos\t", self.currentPos)
+                        print("Direction\t", direction)
+                        print("Next Pos\t", self.nextPos)
+                        print("Exploration\t", self.nodes_to_explore)
+                        print("Connections\t", self.node_connections)
+                        print("---------------------------\n")
+
+                    if direction is not "None":
+                        self.nodes_to_explore.add(
+                            self.add_coordinates(self.currentPos, coord[1]))
+
+                        self.nextPos = self.add_coordinates(
+                            self.currentPos, coord[1])
+
+                    self.driveMotors(-0.15, 0.15)
+                    self.rotating = self.rotateLeft()
+
             else:
                 angle = self.measures.compass + 180
                 if angle > 180:
@@ -143,30 +181,66 @@ class MyRob(CRobLinkAngs):
 
                 # while going forward make adjustment to the closest direction
                 if angle in list(range(-179, -150)) + list(range(-89, -60)) + list(range(1, 30)) + list(range(91, 120)):
-                    # print("right adjustment")
                     self.driveMotors(0.01, -0.01)
                 elif angle in list(range(150, 180)) + list(range(-120, -90)) + list(range(-30, 0)) + list(range(60, 90)):
-                    # print("left adjustment")
                     self.driveMotors(-0.01, 0.01)
                 else:
+                    self.before_rotation = True
                     if self.start:
                         self.start = False
                         self.initialPos = self.currentPos = (
                             self.measures.x, self.measures.y)
 
-                        direction, coord = self.get_direction()
-
                         self.nodes_to_explore.add(
                             self.add_coordinates(self.currentPos, coord[3]))
 
+                        self.add_connections(coord, self.currentPos)
+
                         self.nextPos = self.add_coordinates(
                             self.currentPos, coord[0])
-                    else:
-                        pass
 
-                    print(self.nodes_to_explore)
-                    print("---------------------------")
+                        print("\n\nUpdate\t1")
+                        print("Current Pos\t", self.currentPos)
+                        print("Direction\t", direction)
+                        print("Next Pos\t", self.nextPos)
+                        print("Exploration\t", self.nodes_to_explore)
+                        print("Connections\t", self.node_connections)
+                        print("---------------------------\n")
+                    else:
+
+                        if direction is "up" and self.measures.y - self.nextPos[1] >= 0\
+                                or direction is "left" and self.nextPos[0] - self.measures.x >= 0\
+                                or direction is "right" and self.measures.x - self.nextPos[0] >= 0\
+                                or direction is "down" and self.nextPos[0] - self.measures.y >= 0\
+                                or self.finished_rotation:
+
+                            self.finished_rotation = False
+
+                            self.currentPos = self.nextPos
+
+                            if self.currentPos in self.nodes_to_explore:
+                                self.nodes_to_explore.remove(self.currentPos)
+
+                            self.add_connections(coord, self.currentPos)
+                            self.add_nodes_to_explore(coord, self.currentPos)
+
+                            self.nextPos = self.add_coordinates(
+                                self.currentPos, coord[0])
+
+                            self.nodes_to_explore = set(
+                                [node for node in self.nodes_to_explore if node not in self.node_connections])
+
+                            print("\n\nUpdate\t2")
+                            print("Current Pos\t", self.currentPos)
+                            print("Direction\t", direction)
+                            print("Next Pos\t", self.nextPos)
+                            print("Exploration\t", self.nodes_to_explore)
+                            print("Connections\t", self.node_connections)
+                            print("---------------------------\n")
+
                     self.driveMotors(0.15, 0.15)
+
+                    self.registeredPos.add(self.currentPos)
 
     # while going forward adds place that have not been yet visited
     def add_nodes_to_explore(self, coord, currentPos):
@@ -211,16 +285,6 @@ class MyRob(CRobLinkAngs):
             self.node_connections[currentPos] += [
                 self.add_coordinates(currentPos, coord[3])]
 
-    # checks if a point is near other point by a distance of 0.2 diameters
-    def is_near(self, a, b, direction):
-        if direction in ["up", "down"]:
-            if (abs(a[1]) - abs(b[1])) <= 0.2:
-                return True
-        elif direction in ["left", "right"]:
-            if (abs(a[0]) - abs(b[0])) <= 0.2:
-                return True
-        return False
-
     # return middle between two points
     def get_middle_point(self, a, b):
         return ((a[0]+b[0])/2, (a[1]+b[1])/2)
@@ -230,8 +294,6 @@ class MyRob(CRobLinkAngs):
         angle = self.measures.compass + 180
         if angle > 180:
             angle = angle - 360
-
-        print(angle)
 
         if angle in [-91, -90, -89]:
             return "up", [(0, 2), (-2, 0), (2, 0), (0, -2)]
