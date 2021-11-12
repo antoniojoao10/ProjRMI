@@ -123,26 +123,6 @@ class MyRob(CRobLinkAngs):
 
             # if it's blocked while going forward, makes a turn
             if front > 1.5:
-
-                if self.before_rotation:
-                    self.before_rotation = False
-
-                    self.currentPos = self.nextPos
-
-                    if self.currentPos in self.nodes_to_explore:
-                        self.nodes_to_explore.remove(self.currentPos)
-
-                    self.add_connections(coord, self.currentPos)
-                    self.add_nodes_to_explore(coord, self.currentPos)
-
-                    self.nextPos = self.add_coordinates(
-                        self.currentPos, coord[0])
-
-                    self.nodes_to_explore = set(
-                        [node for node in self.nodes_to_explore if node not in self.node_connections])
-
-                    self.print_details(3, direction)
-
                 if right > 1:
                     if direction is not "None":
                         self.nextPos = self.add_coordinates(
@@ -165,6 +145,26 @@ class MyRob(CRobLinkAngs):
                         self.nextPos = self.add_coordinates(
                             self.currentPos, coord[1])
 
+                        if self.before_rotation:
+                            self.before_rotation = False
+
+                            self.currentPos = (
+                                floor(self.measures.x)+0.5, floor(self.measures.y)+0.5)
+
+                            if self.currentPos in self.nodes_to_explore:
+                                self.nodes_to_explore.remove(self.currentPos)
+
+                            self.add_connections(coord, self.currentPos)
+                            self.add_nodes_to_explore(coord, self.currentPos)
+
+                            self.nextPos = self.add_coordinates(
+                                self.currentPos, coord[1])
+
+                        self.nodes_to_explore = set(
+                            [node for node in self.nodes_to_explore if node not in self.node_connections])
+
+                        self.print_details(3, direction)
+
                     self.driveMotors(-0.15, 0.15)
                     self.rotating = self.rotateLeft()
 
@@ -183,7 +183,7 @@ class MyRob(CRobLinkAngs):
                     if self.start:
                         self.start = False
                         self.initialPos = self.currentPos = (
-                            self.measures.x, self.measures.y)
+                            floor(self.measures.x)+0.5, floor(self.measures.y)+0.5)
 
                         self.nodes_to_explore.add(
                             self.add_coordinates(self.currentPos, coord[3]))
@@ -205,7 +205,8 @@ class MyRob(CRobLinkAngs):
 
                             self.finished_rotation = False
 
-                            self.currentPos = self.nextPos
+                            self.currentPos = (
+                                floor(self.measures.x)+0.5, floor(self.measures.y)+0.5)
 
                             if self.currentPos in self.nodes_to_explore:
                                 self.nodes_to_explore.remove(self.currentPos)
@@ -225,11 +226,14 @@ class MyRob(CRobLinkAngs):
 
                     self.registeredPos.add(self.currentPos)
 
+    def update(self):
+
     def print_details(self, num, direction):
         print("\n\nUpdate\t"+str(num))
         print("Current Pos\t", self.currentPos)
-        '''print("Direction\t", direction)
+        print("GPS\t\t", self.measures.x, self.measures.y)
         print("Next Pos\t", self.nextPos)
+        '''print("Direction\t", direction)
         print("Exploration\t", self.nodes_to_explore)'''
         print("Connections\t", self.node_connections)
         print("---------------------------\n")
@@ -405,4 +409,3 @@ if __name__ == '__main__':
         rob.printMap()
 
     rob.run()
-
