@@ -226,8 +226,6 @@ class MyRob(CRobLinkAngs):
 
                     self.registeredPos.add(self.currentPos)
 
-    def update(self):
-
     def print_details(self, num, direction):
         print("\n\nUpdate\t"+str(num))
         print("Current Pos\t", self.currentPos)
