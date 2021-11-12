@@ -122,7 +122,27 @@ class MyRob(CRobLinkAngs):
             direction, coord = self.get_direction()
 
             # if it's blocked while going forward, makes a turn
-            if front > 2:
+            if front > 1.5:
+
+                if self.before_rotation:
+                    self.before_rotation = False
+
+                    self.currentPos = self.nextPos
+
+                    if self.currentPos in self.nodes_to_explore:
+                        self.nodes_to_explore.remove(self.currentPos)
+
+                    self.add_connections(coord, self.currentPos)
+                    self.add_nodes_to_explore(coord, self.currentPos)
+
+                    self.nextPos = self.add_coordinates(
+                        self.currentPos, coord[0])
+
+                    self.nodes_to_explore = set(
+                        [node for node in self.nodes_to_explore if node not in self.node_connections])
+
+                    self.print_details(3, direction)
+
                 if right > 1:
                     if direction is not "None":
                         self.nextPos = self.add_coordinates(
@@ -138,32 +158,6 @@ class MyRob(CRobLinkAngs):
                     self.driveMotors(0.15, -0.15)
                     self.rotating = self.rotateRight()
                 else:
-
-                    if self.before_rotation:
-                        self.before_rotation = False
-
-                        self.currentPos = self.nextPos
-
-                        if self.currentPos in self.nodes_to_explore:
-                            self.nodes_to_explore.remove(self.currentPos)
-
-                        self.add_connections(coord, self.currentPos)
-                        self.add_nodes_to_explore(coord, self.currentPos)
-
-                        self.nextPos = self.add_coordinates(
-                            self.currentPos, coord[0])
-
-                        self.nodes_to_explore = set(
-                            [node for node in self.nodes_to_explore if node not in self.node_connections])
-
-                        print("\n\nUpdate\t3")
-                        print("Current Pos\t", self.currentPos)
-                        print("Direction\t", direction)
-                        print("Next Pos\t", self.nextPos)
-                        print("Exploration\t", self.nodes_to_explore)
-                        print("Connections\t", self.node_connections)
-                        print("---------------------------\n")
-
                     if direction is not "None":
                         self.nodes_to_explore.add(
                             self.add_coordinates(self.currentPos, coord[1]))
@@ -199,13 +193,8 @@ class MyRob(CRobLinkAngs):
                         self.nextPos = self.add_coordinates(
                             self.currentPos, coord[0])
 
-                        print("\n\nUpdate\t1")
-                        print("Current Pos\t", self.currentPos)
-                        print("Direction\t", direction)
-                        print("Next Pos\t", self.nextPos)
-                        print("Exploration\t", self.nodes_to_explore)
-                        print("Connections\t", self.node_connections)
-                        print("---------------------------\n")
+                        self.print_details(1, direction)
+
                     else:
 
                         if direction is "up" and self.measures.y - self.nextPos[1] >= 0\
@@ -230,17 +219,20 @@ class MyRob(CRobLinkAngs):
                             self.nodes_to_explore = set(
                                 [node for node in self.nodes_to_explore if node not in self.node_connections])
 
-                            print("\n\nUpdate\t2")
-                            print("Current Pos\t", self.currentPos)
-                            print("Direction\t", direction)
-                            print("Next Pos\t", self.nextPos)
-                            print("Exploration\t", self.nodes_to_explore)
-                            print("Connections\t", self.node_connections)
-                            print("---------------------------\n")
+                            self.print_details(2, direction)
 
                     self.driveMotors(0.15, 0.15)
 
                     self.registeredPos.add(self.currentPos)
+
+    def print_details(self, num, direction):
+        print("\n\nUpdate\t"+str(num))
+        print("Current Pos\t", self.currentPos)
+        '''print("Direction\t", direction)
+        print("Next Pos\t", self.nextPos)
+        print("Exploration\t", self.nodes_to_explore)'''
+        print("Connections\t", self.node_connections)
+        print("---------------------------\n")
 
     # while going forward adds place that have not been yet visited
     def add_nodes_to_explore(self, coord, currentPos):
@@ -266,6 +258,8 @@ class MyRob(CRobLinkAngs):
         left = self.measures.irSensor[1]
         right = self.measures.irSensor[2]
         back = self.measures.irSensor[3]
+
+        print("Values", front, left, right, back)
 
         if currentPos in self.node_connections:
             return
@@ -411,3 +405,4 @@ if __name__ == '__main__':
         rob.printMap()
 
     rob.run()
+
