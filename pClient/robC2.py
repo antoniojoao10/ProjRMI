@@ -121,6 +121,10 @@ class MyRob(CRobLinkAngs):
 
             direction, coord = self.get_direction()
 
+            if self.nextPos in self.node_connections:
+                print("\nInitialPos\t", self.initialPos)
+                print(self.get_path_to_next_node(), "\n")
+
             # if it's blocked while going forward, makes a turn
             if front > 1.5:
                 if right > 1:
@@ -139,7 +143,7 @@ class MyRob(CRobLinkAngs):
                     self.rotating = self.rotateRight()
                 else:
                     # self.get_node_to_explore()
-                    #print(self.initialPos, self.get_node_to_explore())
+                    # print(self.initialPos, self.get_node_to_explore())
                     if direction is not "None":
 
                         if self.before_rotation:
@@ -147,7 +151,7 @@ class MyRob(CRobLinkAngs):
 
                             self.update_env(coord, 1)
 
-                        self.print_details(3, direction)
+                        #self.print_details(3, direction)
 
                     self.driveMotors(-0.15, 0.15)
                     self.rotating = self.rotateLeft()
@@ -177,7 +181,7 @@ class MyRob(CRobLinkAngs):
                         self.nextPos = self.add_coordinates(
                             self.currentPos, coord[0])
 
-                        self.print_details(1, direction)
+                        #self.print_details(1, direction)
 
                     else:
 
@@ -189,18 +193,58 @@ class MyRob(CRobLinkAngs):
 
                             self.finished_rotation = False
                             self.update_env(coord, 0)
-                            self.print_details(2, direction)
+                            #self.print_details(2, direction)
 
                     self.driveMotors(0.1, 0.1)
 
                     self.registeredPos.add(self.currentPos)
 
+    # when it steps on a registered position, calculates the path to the nearest non-registered position
+    def get_path_to_next_node(self):
+
+        goal = self.get_node_to_explore()
+        open_nodes = {Node(self.currentPos, None, 0, self.manhattan_distance(
+            self.currentPos, goal)): self.manhattan_distance(self.currentPos, goal)}
+
+        closed_nodes = {}
+
+        while(bool(open_nodes)):
+
+            node = next(iter(open_nodes))
+            open_nodes.pop(node)
+
+            if node.pos == goal:
+                return node.get_path()
+
+            if closed_nodes.get(node.pos) == None:
+                closed_nodes[node.pos] = node.g
+
+            for con in self.node_connections[node.pos]:
+                new_g = node.g + 1
+
+                if closed_nodes.get(con) != None:
+                    if closed_nodes.get(con) <= new_g:
+                        continue
+                    else:
+                        closed_nodes.pop(con)
+
+                new_node = Node(con, node, new_g,
+                                self.manhattan_distance(con, goal))
+
+                open_nodes[new_node] = new_node.f
+
+            open_nodes = {k: v for k, v in sorted(
+                open_nodes.items(), key=lambda item: item[1])}
+
+    # aux function to get the nearest node of nodes_to_explore to the current position
     def get_node_to_explore(self):
         lst = list(self.nodes_to_explore)
         lst = {k for k in sorted(
             lst, key=lambda item: self.manhattan_distance(item, self.currentPos), reverse=True)}
-        print(lst)
-        return lst.pop()
+        tmp = lst.pop()
+        self.nodes_to_explore.remove(tmp)
+        print("Node\t\t", tmp)
+        return tmp
 
     def manhattan_distance(self, begin, end):
         return abs(begin[0] - end[0]) + abs(begin[1] - end[1])
@@ -347,6 +391,27 @@ class MyRob(CRobLinkAngs):
             return 2
 
         return 0
+
+
+class Node():
+    def __init__(self, currentPos, parent, g, h):
+        self.pos = currentPos
+        self.parent = parent
+        self.g = g
+        self.h = h
+        self.f = g + h
+
+    def __str__(self):
+        return "["+str(self.pos) + ", [" + str(self.parent) + "]"
+
+    def get_path(self):
+        path = [self.pos]
+        while self.parent != None:
+            self = self.parent
+            path.append(self.pos)
+        if None in path:
+            path.remove(None)
+        return path
 
 
 class Map():
