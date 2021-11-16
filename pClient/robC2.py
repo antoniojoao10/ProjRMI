@@ -1,4 +1,3 @@
-
 import sys
 from croblink import *
 from math import *
@@ -121,6 +120,7 @@ class MyRob(CRobLinkAngs):
 
             direction, coord = self.get_direction()
 
+
             if self.nextPos in self.node_connections:
                 print("\nInitialPos\t", self.initialPos)
                 print(self.get_path_to_next_node(), "\n")
@@ -201,7 +201,7 @@ class MyRob(CRobLinkAngs):
 
     # when it steps on a registered position, calculates the path to the nearest non-registered position
     def get_path_to_next_node(self):
-
+        
         goal = self.get_node_to_explore()
         open_nodes = {Node(self.currentPos, None, 0, self.manhattan_distance(
             self.currentPos, goal)): self.manhattan_distance(self.currentPos, goal)}
@@ -213,25 +213,27 @@ class MyRob(CRobLinkAngs):
             node = next(iter(open_nodes))
             open_nodes.pop(node)
 
+            
             if node.pos == goal:
                 return node.get_path()
 
             if closed_nodes.get(node.pos) == None:
                 closed_nodes[node.pos] = node.g
 
-            for con in self.node_connections[node.pos]:
-                new_g = node.g + 1
+            if node.pos in self.node_connections:
+                for con in self.node_connections[node.pos]:
+                    new_g = node.g + 1
 
-                if closed_nodes.get(con) != None:
-                    if closed_nodes.get(con) <= new_g:
-                        continue
-                    else:
-                        closed_nodes.pop(con)
+                    if closed_nodes.get(con) != None:
+                        if closed_nodes.get(con) <= new_g:
+                            continue
+                        else:
+                            closed_nodes.pop(con)
 
-                new_node = Node(con, node, new_g,
-                                self.manhattan_distance(con, goal))
+                    new_node = Node(con, node, new_g,
+                                    self.manhattan_distance(con, goal))
 
-                open_nodes[new_node] = new_node.f
+                    open_nodes[new_node] = new_node.f
 
             open_nodes = {k: v for k, v in sorted(
                 open_nodes.items(), key=lambda item: item[1])}
@@ -242,7 +244,6 @@ class MyRob(CRobLinkAngs):
         lst = {k for k in sorted(
             lst, key=lambda item: self.manhattan_distance(item, self.currentPos), reverse=True)}
         tmp = lst.pop()
-        self.nodes_to_explore.remove(tmp)
         print("Node\t\t", tmp)
         return tmp
 
