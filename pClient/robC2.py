@@ -26,6 +26,7 @@ class MyRob(CRobLinkAngs):
         self.nodes_to_explore = set()
         self.finished_rotation = False
         self.before_rotation = True
+        self.cont = 0
 
     # In this map the center of cell (i,j), (i in 0..6, j in 0..13) is mapped to labMap[i*2][j*2].
     # to know if there is a wall on top of cell(i,j) (i in 0..5), check if the value of labMap[i*2+1][j*2] is space or not
@@ -120,38 +121,17 @@ class MyRob(CRobLinkAngs):
 
             direction, coord = self.get_direction()
 
-
-            if self.nextPos in self.node_connections:
-                print("\nInitialPos\t", self.initialPos)
-                print(self.get_path_to_next_node(), "\n")
-
             # if it's blocked while going forward, makes a turn
-            if front > 1.5:
+            if front > 2:
                 if right > 1:
-                    if direction is not "None":
-                        self.nextPos = self.add_coordinates(
-                            self.currentPos, coord[1])
 
                     self.driveMotors(-0.15, 0.15)
                     self.rotating = self.rotateLeft()
                 elif left > 1:
-                    if direction is not "None":
-                        self.nextPos = self.add_coordinates(
-                            self.currentPos, coord[2])
 
                     self.driveMotors(0.15, -0.15)
                     self.rotating = self.rotateRight()
                 else:
-                    # self.get_node_to_explore()
-                    # print(self.initialPos, self.get_node_to_explore())
-                    if direction is not "None":
-
-                        if self.before_rotation:
-                            self.before_rotation = False
-
-                            self.update_env(coord, 1)
-
-                        #self.print_details(3, direction)
 
                     self.driveMotors(-0.15, 0.15)
                     self.rotating = self.rotateLeft()
@@ -171,37 +151,50 @@ class MyRob(CRobLinkAngs):
                     if self.start:
                         self.start = False
                         self.initialPos = self.currentPos = (
-                            round(self.measures.x)+0.5, round(self.measures.y)+0.5)
+                            self.measures.x, self.measures.y)
 
                         self.nodes_to_explore.add(
                             self.add_coordinates(self.currentPos, coord[3]))
 
-                        self.add_connections(coord, self.currentPos)
+                        self.add_connections(coord, self.currentPos, [
+                                             front, left, right, back])
 
                         self.nextPos = self.add_coordinates(
                             self.currentPos, coord[0])
 
-                        #self.print_details(1, direction)
+                        self.print_details(
+                            1, direction, [front, left, right, back])
 
                     else:
+                        if direction is "up" and self.measures.y - self.currentPos[1] >= 1.2\
+                                or direction is "left" and self.currentPos[0] - self.measures.x >= 1.2\
+                                or direction is "right" and self.measures.x - self.currentPos[0] >= 1.2\
+                                or direction is "down" and self.currentPos[1] - self.measures.y >= 1.2:
+                            self.add_connections(coord, self.nextPos, [
+                                front, left, right, back])
+                            self.add_nodes_to_explore(coord, self.nextPos, [
+                                front, left, right, back])
 
                         if direction is "up" and self.measures.y - self.nextPos[1] >= 0\
                                 or direction is "left" and self.nextPos[0] - self.measures.x >= 0\
                                 or direction is "right" and self.measures.x - self.nextPos[0] >= 0\
-                                or direction is "down" and self.nextPos[0] - self.measures.y >= 0\
+                                or direction is "down" and self.nextPos[1] - self.measures.y >= 0\
                                 or self.finished_rotation:
-
                             self.finished_rotation = False
-                            self.update_env(coord, 0)
-                            #self.print_details(2, direction)
+                            self.update_env(
+                                coord, 0, [front, left, right, back])
 
-                    self.driveMotors(0.1, 0.1)
+                            self.purge_connections()
+                            self.print_details(
+                                2, direction, [front, left, right, back])
+
+                    self.driveMotors(0.15, 0.15)
 
                     self.registeredPos.add(self.currentPos)
 
     # when it steps on a registered position, calculates the path to the nearest non-registered position
     def get_path_to_next_node(self):
-        
+
         goal = self.get_node_to_explore()
         open_nodes = {Node(self.currentPos, None, 0, self.manhattan_distance(
             self.currentPos, goal)): self.manhattan_distance(self.currentPos, goal)}
@@ -213,7 +206,6 @@ class MyRob(CRobLinkAngs):
             node = next(iter(open_nodes))
             open_nodes.pop(node)
 
-            
             if node.pos == goal:
                 return node.get_path()
 
@@ -250,76 +242,77 @@ class MyRob(CRobLinkAngs):
     def manhattan_distance(self, begin, end):
         return abs(begin[0] - end[0]) + abs(begin[1] - end[1])
 
+    def purge_connections(self):
+        for key in self.node_connections:
+            self.node_connections[key] = set([con for con in self.node_connections[key]
+                                             if con in list(self.node_connections.keys()) +
+                                              list(self.nodes_to_explore) +
+                                              [self.nextPos]])
+
     # updates the robot environment variables
-    def update_env(self, coord, direction):
-        self.currentPos = (
-            round(self.measures.x)+0.5, round(self.measures.y)+0.5)
+    def update_env(self, coord, direction, sensors):
+        self.currentPos = self.nextPos
 
         if self.currentPos in self.nodes_to_explore:
             self.nodes_to_explore.remove(self.currentPos)
 
-        self.add_connections(coord, self.currentPos)
-        self.add_nodes_to_explore(coord, self.currentPos)
-
-        self.nextPos = self.add_coordinates(
-            self.currentPos, coord[direction])
+        if sensors[0] > 1:
+            if sensors[1] > 1:
+                self.nextPos = self.add_coordinates(
+                    self.currentPos, coord[2])
+            elif sensors[2] > 1:
+                self.nextPos = self.add_coordinates(
+                    self.currentPos, coord[1])
+            else:
+                self.nextPos = self.add_coordinates(
+                    self.currentPos, coord[1])
+        else:
+            self.nextPos = self.add_coordinates(
+                self.currentPos, coord[direction])
 
         self.nodes_to_explore = set(
             [node for node in self.nodes_to_explore if node not in self.node_connections and node != self.nextPos])
 
     # prints detailed information on the current state of the robot
-    def print_details(self, num, direction):
-        print("\n\nUpdate\t"+str(num))
+    def print_details(self, num, direction, sensors):
+        self.cont += 1
+        print("\n\nUpdate No " + str(self.cont) + "\t", str(num))
         print("Current Pos\t", self.currentPos)
         print("GPS\t\t", self.measures.x, self.measures.y)
         print("Next Pos\t", self.nextPos)
         print("Direction\t", direction)
+        print("Sensors\t\t", sensors)
         print("Exploration\t", self.nodes_to_explore)
         print("Connections\t", self.node_connections)
         print("---------------------------\n")
 
     # while going forward adds nodes that have not been yet visited
-    def add_nodes_to_explore(self, coord, currentPos):
-        front = self.measures.irSensor[0]
-        left = self.measures.irSensor[1]
-        right = self.measures.irSensor[2]
-        back = self.measures.irSensor[3]
+    def add_nodes_to_explore(self, coord, pos, sensors):
+        front = sensors[0]
+        left = sensors[1]
+        right = sensors[2]
+        back = sensors[3]
 
-        if currentPos in self.registeredPos:
+        if pos in self.registeredPos:
             return
 
         if left < 1:
             self.nodes_to_explore.add(
-                self.add_coordinates(currentPos, coord[1]))
+                self.add_coordinates(pos, coord[1]))
         if right < 1:
             self.nodes_to_explore.add(
-                self.add_coordinates(currentPos, coord[2]))
+                self.add_coordinates(pos, coord[2]))
 
     # stores adjacents nodes to the current node that are not blocked by walls
-    def add_connections(self, coord, currentPos):
+    def add_connections(self, coord, pos, sensors):
 
-        front = self.measures.irSensor[0]
-        left = self.measures.irSensor[1]
-        right = self.measures.irSensor[2]
-        back = self.measures.irSensor[3]
+        if pos not in self.node_connections:
+            self.node_connections[pos] = set()
 
-        if currentPos in self.node_connections:
-            return
-        else:
-            self.node_connections[currentPos] = []
-
-        if front < 1:
-            self.node_connections[currentPos] += [
-                self.add_coordinates(currentPos, coord[0])]
-        if left < 1:
-            self.node_connections[currentPos] += [
-                self.add_coordinates(currentPos, coord[1])]
-        if right < 1:
-            self.node_connections[currentPos] += [
-                self.add_coordinates(currentPos, coord[2])]
-        if back < 1:
-            self.node_connections[currentPos] += [
-                self.add_coordinates(currentPos, coord[3])]
+        for i in range(len(sensors)):
+            if sensors[i] < 1:
+                self.node_connections[pos].add(
+                    self.add_coordinates(pos, coord[i]))
 
     # return middle between two points
     def get_middle_point(self, a, b):
