@@ -20,26 +20,25 @@ class MyRob(CRobLinkAngs):
         self.initialPos = None
         self.currentPos = None
         self.nextPos = None
+        self.previousPos = None
         self.registeredPos = set()
         self.rotating = 0
         self.node_connections = {}
         self.nodes_to_explore = set()
-        self.finished_rotation = False
-        self.before_rotation = True
+        self.traverse_finished = False
+        self.rotations = 0
         self.cont = 0
-        ######
-        self.initialLoc = None
-        self.startLoc = False
-        self.path=[]
-        self.nextLoc = None
-        self.previousDirection = None
-        self.previousPathPos = None
-        self.cnt = 0
-        self.forward = False
-        self.currentLoc = None
+        self.map = [[" " for i in range(55)] for j in range(27)]
+        self.map_x = 28
+        self.map_y = 14
+        self.map[14][28] = "I"
+        self.track_next = []
+        self.track_next_start = True
+        self.track_next_last = None
 
     # In this map the center of cell (i,j), (i in 0..6, j in 0..13) is mapped to labMap[i*2][j*2].
     # to know if there is a wall on top of cell(i,j) (i in 0..5), check if the value of labMap[i*2+1][j*2] is space or not
+
     def setMap(self, labMap):
         self.labMap = labMap
 
@@ -92,228 +91,244 @@ class MyRob(CRobLinkAngs):
                     self.setReturningLed(False)
                 self.wander()
 
-    def mapping(self):
-        open('mapping.out', 'w').close()
-        rows, cols = (27, 56)
-        arr = [[" " for i in range(cols)] for j in range(rows)]
+    def mapping(self, coord, direction):
+        self.map_x = int(self.map_x)
+        self.map_y = int(self.map_y)
 
-        for i in self.registeredPos:
-            lin = 23 - (i[1]-self.initialPos[1] + 10)
-            col = i[0]-self.initialPos[0] + 2 + 25
-            # print(str(lin) + "\t" + str(col))
-            if 26 <= lin <= 10 or 54 <= col <= 24:
-                continue
-            if arr[lin][col] == " " or arr[lin][col] != "I":
-                arr[lin][col] = i[2]
+        if self.currentPos != self.initialPos:
+            if self.map[self.map_y][self.map_x] != " ":
+                return
+            else:
+                self.map[self.map_y][self.map_x] = "X"
 
-        fout = open("mapping.out", "w")
-        tmp = ""
-        for row in arr:
-            for line in row:
-                tmp += line
-            tmp += "\n"
-        fout.write(tmp)
-        fout.close()
+        for i, move in enumerate(coord):
+            x, y = self.add_coordinates(
+                (self.map_x, self.map_y), self.mult_coordinates(move, (0.5, -0.5)))
+            x = int(x)
+            y = int(y)
+            if self.map[y][x] == " ":
+                if self.add_coordinates(self.currentPos, move) in self.node_connections[self.currentPos]:
+                    self.map[y][x] = "X"
+                else:
+                    if direction in ["up", "down"]:
+                        if i in [0, 3]:
+                            self.map[y][x] = "-"
+                        else:
+                            self.map[y][x] = "|"
+                    else:
+                        if i in [0, 3]:
+                            self.map[y][x] = "|"
+                        else:
+                            self.map[y][x] = "-"
+
+        with open(map_name, "w") as fout:
+            tmp = ""
+            for row in self.map:
+                for line in row:
+                    tmp += line
+                tmp += "\n"
+            fout.write(tmp)
 
     def wander(self):
         # if it's rotating, keep rotating
-        if self.rotating == 1:
+        if self.rotating == 1 or self.rotations > 0:
             self.rotating = self.rotateLeft()
-            self.finished_rotation = True
+            if self.rotating == 0:
+                self.rotations -= 1
+            if self.rotations > 0:
+                self.driveMotors(-0.15, 0-15)
+                self.rotating = 1
         elif self.rotating == 2:
             self.rotating = self.rotateRight()
-            self.finished_rotation = True
         else:
+            direction, coord = self.get_direction()
+
             front = self.measures.irSensor[0]
             left = self.measures.irSensor[1]
             right = self.measures.irSensor[2]
             back = self.measures.irSensor[3]
 
-            
-            direction, coord = self.get_direction()
-
-            #v Verifica se já esteve na posição e se sim, vai começar a ir para uma posião não explorada
-            # Cria o path e as variaveis importantes
-            if self.nextPos in self.registeredPos and self.start == False and self.startLoc == False:
-                self.path = self.get_path_to_next_node()
-                tmp=[]
-                for a in self.path:
-                    tmp.append(( round(a[0]), round(a[1]) ))
-                self.path = tmp
-                self.initialLoc == self.path[0]
-                self.path.pop()
-                print(self.path)
-                self.startLoc = True
-            
-            # Começa a procurar a posição
-            if self.startLoc:
-                self.startLoc = self.wander2Position(direction, coord, right, left, front)
-
-            # if it's blocked while going forward, makes a turn
-
-            elif front > 1.5:
-                if right > 1:
-                    self.driveMotors(-0.15, 0.15)
-                    self.rotating = self.rotateLeft()
-                elif left > 1:
-                    self.driveMotors(0.15, -0.15)
-                    self.rotating = self.rotateRight()
+            if self.track_next:
+                if self.track_next_start:
+                    self.track_next_start = self.add_coordinates(
+                        self.currentPos, coord[0]) != self.track_next_last
+                    if self.track_next_start:
+                        self.driveMotors(0.15, -0.15)
+                        self.rotating = 2
                 else:
-                    self.driveMotors(-0.15, 0.15)
-                    self.rotating = self.rotateLeft()
-            else:
-                angle = self.measures.compass + 180
-                if angle > 180:
-                    angle = angle - 360
-                # while going forward make adjustment to the closest direction
-                if angle in list(range(-179, -150)) + list(range(-89, -60)) + list(range(1, 30)) + list(range(91, 120)):
-                    self.driveMotors(0.01, -0.01)
-                elif angle in list(range(150, 180)) + list(range(-120, -90)) + list(range(-30, 0)) + list(range(60, 90)):
-                    self.driveMotors(-0.01, 0.01)
-                else:
-                    self.before_rotation = True
-                    if self.start:
-                        self.start = False
-                        self.initialPos = self.initialLoc = self.currentPos = (
-                            self.measures.x, self.measures.y)
-                        self.nodes_to_explore.add(
-                            self.add_coordinates(self.currentPos, coord[3]))
-                        self.add_connections(coord, self.currentPos, [
-                                            front, left, right, back])
-                        self.nextPos = self.add_coordinates(
-                            self.currentPos, coord[0])
-                        self.print_details(
-                            1, direction, [front, left, right, back])
-                    else:
-                        if direction is "up" and self.measures.y - self.currentPos[1] >= 1.2\
-                                or direction is "left" and self.currentPos[0] - self.measures.x >= 1.2\
-                                or direction is "right" and self.measures.x - self.currentPos[0] >= 1.2\
-                                or direction is "down" and self.currentPos[1] - self.measures.y >= 1.2:
-                            self.add_connections(coord, self.nextPos, [
-                                front, left, right, back])
-                            self.add_nodes_to_explore(coord, self.nextPos, [
-                                front, left, right, back])
-                        if direction is "up" and self.measures.y - self.nextPos[1] >= 0\
-                                or direction is "left" and self.nextPos[0] - self.measures.x >= 0\
-                                or direction is "right" and self.measures.x - self.nextPos[0] >= 0\
-                                or direction is "down" and self.nextPos[1] - self.measures.y >= 0\
-                                or self.finished_rotation:
-                            self.finished_rotation = False
-                            self.update_env(
-                                coord, 0, [front, left, right, back])
-                            self.purge_connections()
-                            self.print_details(
-                                2, direction, [front, left, right, back])
-                    self.driveMotors(0.15, 0.15)
-                    self.registeredPos.add(self.currentPos)
-    
-    def wander2Position(self, direction, coord, right, left, front):
-            print(self.path)
-
-            # retorna ao wander normal após acabar a lista path
-            if self.path == [] : return False
-            self.currentLoc = ( round( self.measures.x ) , round( self.measures.y) )
-
-            # repetição do move anterior 
-            if direction == None or coord == []:
-                    if self.move == "right" :
-                        if right < 1:
-                            self.driveMotors(0.15, -0.15)
-                            self.rotating = self.rotateRight()
-                        else:
-                            self.driveMotors(0.15, 0.15)
-                            self.rotating = self.rotateRight()
-                    elif self.move == "left":
-                        if left < 1:
-                            self.driveMotors(-0.15, 0.15)
-                            self.rotating = self.rotateLeft()
-                        else:
-                            self.driveMotors(0.15, 0.15)
-                            self.rotating = self.rotateLeft()
-                    else:
-                        if front < 1.8:
-                            self.driveMotors(0.1, 0.1)
-            else:
-
-                print(self.currentLoc)
-                print(self.nextLoc)
-
-                # Se chegou a localização prevista, faz pop da próxima do path
-                if self.currentLoc == self.nextLoc or self.nextLoc == None:
-                    pos = None
-                    self.previousDirection = direction
-                    self.nextLoc = tmp = self.path.pop()
-                    if self.previousPathPos == None: pos = self.diff_coordinates(tmp, self.currentLoc)
-                    else: pos = self.diff_coordinates(tmp, self.previousPathPos)
-
-                    self.previousPathPos = tmp
-                    print(direction)
-                    self.move = self.go_2_coord(direction,pos)
-                    print(self.move)
-                    print(pos)
-
-                    #recebe a direção da nova posição
-                    if self.move == "right" :
-                        if right < 1:
-                            self.driveMotors(0.15, -0.15)
-                            self.rotating = self.rotateRight()
-                        else:
-                            self.driveMotors(0.15, 0.15)
-                            self.rotating = self.rotateRight()
-                    elif self.move == "left":
-                        if left < 1:
-                            self.driveMotors(-0.15, 0.15)
-                            self.rotating = self.rotateLeft()
-                        else:
-                            self.driveMotors(0.15, 0.15)
-                            self.rotating = self.rotateLeft()
-                    elif self.move == "back":
-                        self.driveMotors(-0.15, -0.15)
-                    else:
-                        if front < 1.8:
-                            self.driveMotors(0.1, 0.1)
-
-                # se não chegou à posição vai repetir o move   
-                else:
-                    pos = self.diff_coordinates(self.previousPathPos, self.currentLoc)
-
-                    print(direction)
-                    self.move = self.go_2_coord(direction,pos)
-                    print(self.move)
-                    print(pos)
-                    if self.move == "right" :
-                        if right < 1:
-                            self.driveMotors(0.15, -0.15)
-                            self.rotating = self.rotateRight()
-                        else:
-                            self.driveMotors(0.15, 0.15)
-                            self.rotating = self.rotateRight()
-                    elif self.move == "left":
-                        if left < 1:
-                            self.driveMotors(-0.15, 0.15)
-                            self.rotating = self.rotateLeft()
-                        else:
-                            self.driveMotors(0.15, 0.15)
-                            self.rotating = self.rotateLeft()
-                    elif self.move == "back":
-                        self.driveMotors(-0.15, -0.15)
-                    else: 
-                        if front <1.8:
-                            self.driveMotors(0.1, 0.1) 
+                    self.traverse_path(
+                        [front, left, right, back], direction, coord)
+                return
 
             angle = self.measures.compass + 180
             if angle > 180:
                 angle = angle - 360
+
             # while going forward make adjustment to the closest direction
             if angle in list(range(-179, -150)) + list(range(-89, -60)) + list(range(1, 30)) + list(range(91, 120)):
                 self.driveMotors(0.01, -0.01)
             elif angle in list(range(150, 180)) + list(range(-120, -90)) + list(range(-30, 0)) + list(range(60, 90)):
                 self.driveMotors(-0.01, 0.01)
-
-            if self.currentLoc == self.path: 
-                return False
             else:
-                return True
+                self.before_rotation = True
+                if self.start:
+                    self.start = False
+                    self.initialPos = self.currentPos = (
+                        self.measures.x, self.measures.y)
+
+                    self.nodes_to_explore.add(
+                        self.add_coordinates(self.currentPos, coord[3]))
+
+                    self.add_connections(coord, self.currentPos, [
+                        front, left, right, back])
+
+                    self.nextPos = self.add_coordinates(
+                        self.currentPos, coord[0])
+
+                    self.mapping(coord, direction)
+
+                    # self.print_details(
+                    #    1, direction, [front, left, right, back])
+
+                else:
+                    if direction is "up" and self.measures.y - self.currentPos[1] >= 1.2\
+                            or direction is "left" and self.currentPos[0] - self.measures.x >= 1.2\
+                            or direction is "right" and self.measures.x - self.currentPos[0] >= 1.2\
+                            or direction is "down" and self.currentPos[1] - self.measures.y >= 1.2:
+                        self.add_connections(coord, self.nextPos, [
+                            front, left, right, back])
+                        self.add_nodes_to_explore(coord, self.nextPos, [
+                            front, left, right, back])
+
+                    if direction is "up" and self.measures.y - self.nextPos[1] >= 0\
+                            or direction is "left" and self.nextPos[0] - self.measures.x >= 0\
+                            or direction is "right" and self.measures.x - self.nextPos[0] >= 0\
+                            or direction is "down" and self.nextPos[1] - self.measures.y >= 0:
+                        if self.traverse_finished:
+                            self.traverse_finished = False
+                            return
+
+                        self.update_env(
+                            coord, 0, [front, left, right, back])
+
+                        self.purge_connections()
+
+                        # self.print_details(
+                        #    2, direction, [front, left, right, back])
+
+                        self.mapping(coord, direction)
+
+                        if self.nextPos in self.node_connections:
+                            self.track_next = [None] + \
+                                self.get_path_to_next_node()[:-1]
+                            self.nextPos = self.track_next_last = self.track_next.pop()
+
+                            self.mapping(coord, direction)
+
+                            # self.print_details(
+                            #    4, direction, [front, left, right, back])
+                            self.driveMotors(0, 0)
+                            return
+
+                        # if it's blocked while going forward, makes a turn
+                        if front > 1:
+                            if right > 1 and left < 1:
+                                self.driveMotors(-0.15, 0.15)
+                                self.rotating = 1
+                            elif left > 1 and right < 1:
+                                self.driveMotors(0.15, -0.15)
+                                self.rotating = 2
+                            elif left > 1 and right > 1:
+                                self.driveMotors(-0.15, 0.15)
+                                self.rotating = 1
+                                self.rotations = 2
+                            else:
+                                self.driveMotors(-0.15, 0.15)
+                                self.rotating = 1
+
+                if self.rotating == 0:
+                    self.driveMotors(0.15, 0.15)
+
+                self.registeredPos.add(self.currentPos)
+
+    # makes the robot go to the next node to continue exploration
+    def traverse_path(self, sensors, direction, coord):
+        angle = self.measures.compass + 180
+        if angle > 180:
+            angle = angle - 360
+
+        if direction is "up" and self.measures.y - self.nextPos[1] >= 0\
+                or direction is "left" and self.nextPos[0] - self.measures.x >= 0\
+                or direction is "right" and self.measures.x - self.nextPos[0] >= 0\
+                or direction is "down" and self.nextPos[1] - self.measures.y >= 0:
+            self.previousPos = self.currentPos
+            self.currentPos = self.nextPos
+            self.nextPos = self.track_next.pop()
+
+            front = sensors[0]
+            left = sensors[1]
+            right = sensors[2]
+            back = sensors[3]
+
+            if not self.track_next:
+                if front > 1:
+                    if right > 1 and left < 1:
+                        self.nextPos = self.add_coordinates(
+                            self.currentPos, coord[1])
+                        self.driveMotors(-0.15, 0.15)
+                        self.rotating = 1
+                    elif left > 1 and right < 1:
+                        self.nextPos = self.add_coordinates(
+                            self.currentPos, coord[2])
+                        self.driveMotors(-0.15, 0.15)
+                        self.rotating = 2
+                    elif right > 1 and left > 1:
+                        self.nextPos = self.add_coordinates(
+                            self.currentPos, coord[3])
+                        self.driveMotors(-0.15, 0.15)
+                        self.rotating = 1
+                        self.rotations = 2
+                    else:
+                        self.nextPos = self.add_coordinates(
+                            self.currentPos, coord[1])
+                        self.driveMotors(-0.15, 0.15)
+                        self.rotating = 1
+                else:
+                    self.nextPos = self.add_coordinates(
+                        self.currentPos, coord[0])
+                self.traverse_finished = True
+
+            curr_coord = self.sub_coordinates(
+                self.currentPos, self.previousPos)
+
+            next_coord = self.sub_coordinates(
+                self.nextPos, self.currentPos)
+
+            self.map_x, self.map_y = self.add_coordinates(
+                (self.map_x, self.map_y), self.mult_coordinates(curr_coord, (1, -1)))
+
+            if next_coord == coord[1]:
+                self.driveMotors(-0.15, 0.15)
+                self.rotating = 1
+            elif next_coord == coord[2]:
+                self.driveMotors(0.15, -0.15)
+                self.rotating = 2
+            elif next_coord == coord[3]:
+                self.driveMotors(-0.15, 0.15)
+                self.rotating = 1
+                self.rotations = 2
+
+            # self.print_details(
+            #    3, direction, [front, left, right, back])
+
+        # while going forward make adjustment to the closest direction
+        if angle in list(range(-179, -150)) + list(range(-89, -60)) + list(range(1, 30)) + list(range(91, 120)):
+            self.driveMotors(0.01, -0.01)
+        elif angle in list(range(150, 180)) + list(range(-120, -90)) + list(range(-30, 0)) + list(range(60, 90)):
+            self.driveMotors(-0.01, 0.01)
+        else:
+            if self.rotating == 0:
+                self.driveMotors(0.15, 0.15)
 
     # when it steps on a registered position, calculates the path to the nearest non-registered position
     def get_path_to_next_node(self):
@@ -324,12 +339,13 @@ class MyRob(CRobLinkAngs):
 
         closed_nodes = {}
 
-        while(bool(open_nodes)):
+        while open_nodes:
 
             node = next(iter(open_nodes))
             open_nodes.pop(node)
 
             if node.pos == goal:
+                print(node.get_path())
                 return node.get_path()
 
             if closed_nodes.get(node.pos) == None:
@@ -356,15 +372,16 @@ class MyRob(CRobLinkAngs):
     # aux function to get the nearest node of nodes_to_explore to the current position
     def get_node_to_explore(self):
         lst = list(self.nodes_to_explore)
-        lst = {k for k in sorted(
-            lst, key=lambda item: self.manhattan_distance(item, self.currentPos), reverse=True)}
+        lst = [node for node in sorted(
+            lst, key=lambda x: self.manhattan_distance(x, self.currentPos), reverse=True)]
         tmp = lst.pop()
-        print("Node\t\t", tmp)
+        self.nodes_to_explore.remove(tmp)
         return tmp
 
     def manhattan_distance(self, begin, end):
         return abs(begin[0] - end[0]) + abs(begin[1] - end[1])
 
+    # removes faulty connections
     def purge_connections(self):
         for key in self.node_connections:
             self.node_connections[key] = set([con for con in self.node_connections[key]
@@ -374,24 +391,35 @@ class MyRob(CRobLinkAngs):
 
     # updates the robot environment variables
     def update_env(self, coord, direction, sensors):
+        self.previousPos = self.currentPos
         self.currentPos = self.nextPos
+
+        self.map_x, self.map_y = self.add_coordinates(
+            (self.map_x, self.map_y), self.mult_coordinates(coord[direction], (1, -1)))
 
         if self.currentPos in self.nodes_to_explore:
             self.nodes_to_explore.remove(self.currentPos)
 
-        if sensors[0] > 1:
-            if sensors[1] > 1:
-                self.nextPos = self.add_coordinates(
-                    self.currentPos, coord[2])
-            elif sensors[2] > 1:
+        front = sensors[0]
+        left = sensors[1]
+        right = sensors[2]
+        back = sensors[3]
+        if front > 1:
+            if right > 1 and left < 1:
                 self.nextPos = self.add_coordinates(
                     self.currentPos, coord[1])
+            elif left > 1 and right < 1:
+                self.nextPos = self.add_coordinates(
+                    self.currentPos, coord[2])
+            elif right > 1 and left > 1:
+                self.nextPos = self.add_coordinates(
+                    self.currentPos, coord[3])
             else:
                 self.nextPos = self.add_coordinates(
                     self.currentPos, coord[1])
         else:
             self.nextPos = self.add_coordinates(
-                self.currentPos, coord[direction])
+                self.currentPos, coord[0])
 
         self.nodes_to_explore = set(
             [node for node in self.nodes_to_explore if node not in self.node_connections and node != self.nextPos])
@@ -399,14 +427,21 @@ class MyRob(CRobLinkAngs):
     # prints detailed information on the current state of the robot
     def print_details(self, num, direction, sensors):
         self.cont += 1
+        angle = self.measures.compass + 180
+        if angle > 180:
+            angle = angle - 360
         print("\n\nUpdate No " + str(self.cont) + "\t", str(num))
+        print("Initial Pos\t", self.initialPos)
+        print("(x,y)\t\t", (self.map_x, self.map_y))
+        print("Previous Pos\t", self.previousPos)
         print("Current Pos\t", self.currentPos)
         print("GPS\t\t", self.measures.x, self.measures.y)
         print("Next Pos\t", self.nextPos)
         print("Direction\t", direction)
+        print("Angle\t\t", angle)
         print("Sensors\t\t", sensors)
-        print("Exploration\t", self.nodes_to_explore)
-        print("Connections\t", self.node_connections)
+        #print("Exploration\t", self.nodes_to_explore)
+        #print("Connections\t", self.node_connections)
         print("---------------------------\n")
 
     # while going forward adds nodes that have not been yet visited
@@ -457,29 +492,10 @@ class MyRob(CRobLinkAngs):
             return "down", [(0, -2), (2, 0), (-2, 0), (0, 2)]
         return "None", []
 
-    # returns direction of a certain position
-    def go_2_coord(self, direction, diff):
-        if direction == "up":
-            if abs(diff[0]) < abs(diff[1]) and diff[1]>0: return "up"
-            elif abs(diff[0]) > abs(diff[1]) and diff[0]<0 : return "left"
-            elif abs(diff[0]) > abs(diff[1]) and diff[0]>0 : return "right"
-            elif abs(diff[0]) < abs(diff[1]) and diff[1]<0 : return "back"
-        elif direction == "left":
-            if abs(diff[0]) > abs(diff[1]) and diff[0]<0 : return "up"
-            elif abs(diff[0]) < abs(diff[1]) and diff[1]<0 : return "left"
-            elif abs(diff[0]) < abs(diff[1]) and diff[1]>0 : return "right"
-            elif abs(diff[0]) > abs(diff[1]) and diff[0]>0 : return "back"
-        elif direction == "right":
-            if abs(diff[0]) > abs(diff[1]) and diff[0]>0 : return "up"
-            elif abs(diff[0]) < abs(diff[1]) and diff[1]>0 : return "left"
-            elif abs(diff[0]) < abs(diff[1]) and diff[1]<0 : return "right"
-            elif abs(diff[0]) > abs(diff[1]) and diff[0]<0 : return "back"
-        elif direction == "down":
-            if abs(diff[0]) < abs(diff[1]) and diff[1]<0: return "up"
-            elif abs(diff[0]) > abs(diff[1]) and diff[0]>0 : return "left"
-            elif abs(diff[0]) > abs(diff[1]) and diff[0]<0 : return "right"
-            elif abs(diff[0]) < abs(diff[1]) and diff[1]>0 : return "back"
-            
+    # subs tuples with 2 values
+    def sub_coordinates(self, a, b):
+        return (a[0]-b[0], a[1]-b[1])
+
     # adds tuples with 2 variables
     def add_coordinates(self, a, b):
         return (a[0]+b[0], a[1]+b[1])
@@ -487,10 +503,6 @@ class MyRob(CRobLinkAngs):
     # multiplies tuples with 2 variables
     def mult_coordinates(self, a, b):
         return (a[0]*b[0], a[1]*b[1])
-
-     # sub tuples with 2 variables
-    def diff_coordinates(self, a, b):
-        return (a[0]-b[0], a[1]-b[1])
 
     def rotateLeft(self):
         rotate = False
@@ -590,16 +602,19 @@ rob_name = "pClient1"
 host = "localhost"
 pos = 1
 mapc = None
+map_name = "mapping.out"
 
 for i in range(1, len(sys.argv), 2):
     if (sys.argv[i] == "--host" or sys.argv[i] == "-h") and i != len(sys.argv) - 1:
         host = sys.argv[i + 1]
     elif (sys.argv[i] == "--pos" or sys.argv[i] == "-p") and i != len(sys.argv) - 1:
         pos = int(sys.argv[i + 1])
-    elif (sys.argv[i] == "--robname" or sys.argv[i] == "-p") and i != len(sys.argv) - 1:
+    elif (sys.argv[i] == "--robname" or sys.argv[i] == "-r") and i != len(sys.argv) - 1:
         rob_name = sys.argv[i + 1]
     elif (sys.argv[i] == "--map" or sys.argv[i] == "-m") and i != len(sys.argv) - 1:
         mapc = Map(sys.argv[i + 1])
+    elif (sys.argv[i] == "-f") and i != len(sys.argv) - 1:
+        map_name = sys.argv[i + 1]
     else:
         print("Unkown argument", sys.argv[i])
         quit()
