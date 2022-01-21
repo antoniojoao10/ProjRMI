@@ -188,9 +188,9 @@ class MyRob(CRobLinkAngs):
 
         direction, coord = self.get_direction()
 
-        if self.mov >= 0.8 or front > 1.8: 
-            self.inpower = 0.13
-            self.driveMotors(0.132,0.132)
+        if self.mov >= 0.8 or front > 1.6: 
+            self.inpower = 0.134
+            self.driveMotors(0.134,0.134)
             if direction == None : quit()
             print(direction)
             #self.driveMotors(0,0)  
