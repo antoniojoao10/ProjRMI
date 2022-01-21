@@ -4,10 +4,15 @@ import sys
 from tree_search import *
 from croblink import *
 from math import *
+from cmath import log, sqrt
+from random import randrange
 import xml.etree.ElementTree as ET
 
 CELLROWS=7
 CELLCOLS=14
+
+# IMPORTANTE:
+#   O x e y representam x+1 e y+1 no mapping.map. Logo os impares no self.map são pares no mapping.map e vice versa. 
 
 class MyRob(CRobLinkAngs):
     def __init__(self, rob_name, rob_id, angles, host):
@@ -16,7 +21,7 @@ class MyRob(CRobLinkAngs):
         self.moving = False #está se a mover
         self.rotating = 0
         self.currentPos=[0,0]
-        rows, cols = (27, 54)
+        rows, cols = (27, 55)
         self.map = [[" " for i in range(cols)] for j in range(rows)]
         self.mapping(True) #posição inicial
         self.prevRotate = False #se rodou anteriormente
@@ -33,11 +38,24 @@ class MyRob(CRobLinkAngs):
         self.tree = None #arvore de pesquisa
         self.startPath = True
         self.overMotor = False # se na deslocação para U se movimentar demasiado para a frente, não tendo espaço para virar para algum lado 
+        self.nearU = False
 
-        #tentar corrigir a erros de sensores nas posições de U
+
+        self.inpower= 0
+        self.outpower= 0
+        self.prevpower=0
+        self.mov = 0
+        
+
+
+        #tentar corrigir a erros de sensores nas posições de U. Com o ruido dos sensores pode haver U
         self.fixMissU = 0 
+        self.rightCnt = 0
+        self.leftCnt = 0
+        self.upCnt = 0
+        self.downCnt = 0
 
-        self.test = True            
+        self.test = True  #debug
 
 
     # In this map the center of cell (i,j), (i in 0..6, j in 0..13) is mapped to labMap[i*2][j*2].
@@ -102,6 +120,7 @@ class MyRob(CRobLinkAngs):
 
         direction, coord = self.get_direction()
 
+        if self.measures.collision: quit()
         
         if self.moving:
             if self.centerDirection():
@@ -122,16 +141,15 @@ class MyRob(CRobLinkAngs):
         else:
             if self.centerDirection():
                 """if self.test:
-                    self.move()
-                    self.moving = True
-                    """
+                    self.rotating = self.rotate180()"""
+                    
                 print(self.fixMissU)
                 print(left)
                 print(right)
                 print(front)
                 print(self.prevRotate)
                 
-                if front <= 1.5:
+                if front <= 1.2:
                     tmp = self.currentPos.copy()
                     if direction == "right":
                         tmp[1] = tmp[1] + 1
@@ -168,28 +186,24 @@ class MyRob(CRobLinkAngs):
         right = self.measures.irSensor[2]
         back = self.measures.irSensor[3]
 
-        num = 10
-        #if self.finished_rotation: num = 20
-   
         direction, coord = self.get_direction()
 
-        #if self.cnt % 5 == 0: self.driveMotors(0.09,0.09) 
-        if self.cnt < num :
-            self.driveMotors(0.115,0.115)   
-        if self.cnt < num  and (direction == "down"):
-            if self.cnt % 5 == 0: self.driveMotors(0.099,0.099)  
-            else: self.driveMotors(0.101,0.101) 
-        if self.cnt < num  and (direction == "up"):
-            self.driveMotors(0.116,0.116)  
-        if self.cnt == num or front > 2:
-            if direction == None : exit()
+        if self.mov >= 0.8 or front > 1.8: 
+            self.inpower = 0.13
+            self.driveMotors(0.132,0.132)
+            if direction == None : quit()
             print(direction)
-            self.driveMotors(0,0)  
+            #self.driveMotors(0,0)  
             self.moving = False 
             self.test = False
             self.cnt = 0
             self.finished_rotation = False
+            self.inpower= 0
+            self.outpower= 0
+            #self.prevpower=0
+            self.mov = 0
 
+            #atualiza a current position quando acaba o movimento 
             if direction == "right":
                 self.currentPos[1] = self.currentPos[1] + 1
             elif direction == "left":
@@ -206,32 +220,55 @@ class MyRob(CRobLinkAngs):
             #print(self.alreadyVisited)
             x = self.currentPos[0]
             y = self.currentPos[1]
-            self.alreadyVisited.append([x,y])
+            self.alreadyVisited.append([x,y]) # já vistou a posição atual
             
-            if self.fixMissU % 2 == 0:
+            if self.fixMissU % 2 == 0: # só em linhas pares é podes haver movimento, ou seja, só em pares é que pode haver caminhos por explorar
                 if direction == "right":
-                    if left < 1.2: self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
-                    if right < 1.2: self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
-                    if front < 1.2: self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
-                    if back < 1.2: self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
+                    if left < 1.2 : self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
+                    if right < 1.2 : self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
+                    #if front < 1.2 : self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
+                    if back < 1.2 : self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
                 if direction == "left":
-                    if left < 1.2: self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
-                    if right < 1.2: self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
-                    if front < 1.2: self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
-                    if back < 1.2: self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
+                    if left < 1.2 : self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
+                    if right < 1.2 : self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
+                    #if front < 1.2 : self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
+                    if back < 1.2 : self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
                 if direction == "up":
-                    if left < 1.6: self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
-                    if right < 1.6: self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
-                    if front < 1.2: self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
-                    if back < 1.2: self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
+                    if left < 1.2 : self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
+                    if right < 1.2 : self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
+                    #if front < 1.2 : self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
+                    if back < 1.2 : self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
                 if direction == "down":
-                    if left < 1.6: self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
-                    if right < 1.6: self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
-                    if front < 1.2: self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
-                    if back < 1.2: self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
-        
-        """elif self.cnt == 10 :
+                    if left < 1.2 : self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
+                    if right < 1.2 : self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
+                    #if front < 1.2 : self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
+                    if back < 1.2 : self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
+        elif self.mov >= 0.6: 
+            self.inpower = 0.13
+            self.driveMotors(0.13,0.13)
+        else: 
+            self.inpower = 0.15
+            self.driveMotors(0.15,0.15)
+        x =self.randNormal(100, 1.5*1.5) / 100;
+        self.outpower = (0.5*self.inpower + 0.5*self.prevpower) * x
+        z = complex(self.outpower)
+        self.outpower = z.real
+        self.prevpower = self.outpower
+        self.mov += self.outpower
+        """if self.mov >= 1 or front > 2.2: 
+            if direction == None : quit()
             print(direction)
+            self.driveMotors(0,0)  
+            self.moving = False 
+            self.test = False
+            self.cnt = 0
+            self.finished_rotation = False
+            self.inpower= 0
+            self.outpower= 0
+            self.prevpower=0
+            self.mov = 0
+
+            #atualiza a current position quando acaba o movimento 
             if direction == "right":
                 self.currentPos[1] = self.currentPos[1] + 1
             elif direction == "left":
@@ -240,9 +277,102 @@ class MyRob(CRobLinkAngs):
                 self.currentPos[0] = self.currentPos[0] - 1
             elif direction == "down":
                 self.currentPos[0] = self.currentPos[0] + 1
-            self.mapping()"""
+            
+            self.fixMissU +=1
+            self.mapping()
 
-        self.cnt += 1
+            print(self.currentPos)
+            #print(self.alreadyVisited)
+            x = self.currentPos[0]
+            y = self.currentPos[1]
+            self.alreadyVisited.append([x,y]) # já vistou a posição atual
+            
+            if self.fixMissU % 2 == 0: # só em linhas pares é podes haver movimento, ou seja, só em pares é que pode haver caminhos por explorar
+                if direction == "right":
+                    if left < 1.2 : self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
+                    if right < 1.2 : self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
+                    if front < 1.2 : self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
+                    if back < 1.2 : self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
+                if direction == "left":
+                    if left < 1.2 : self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
+                    if right < 1.2 : self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
+                    if front < 1.2 : self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
+                    if back < 1.2 : self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
+                if direction == "up":
+                    if left < 1.2 : self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
+                    if right < 1.2 : self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
+                    if front < 1.2 : self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
+                    if back < 1.2 : self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
+                if direction == "down":
+                    if left < 1.2 : self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
+                    if right < 1.2 : self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
+                    if front < 1.2 : self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
+                    if back < 1.2 : self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array"""
+
+        """num = 11
+   
+        direction, coord = self.get_direction()
+         #TODO melhorar o movimento frontal
+        if self.cnt < num :
+            if self.cnt % 3 == 0: self.driveMotors(0.09,0.09)  
+            else: self.driveMotors(0.115,0.115)   
+        if self.cnt < num  and (direction == "down"):
+            if self.cnt % 2 == 0: self.driveMotors(0.1,0.1)  
+            else: self.driveMotors(0.115,0.115) 
+        if self.cnt < num  and (direction == "up"):
+            if self.cnt % 3 == 0: self.driveMotors(0.1,0.1)  
+            else: self.driveMotors(0.13,0.13)   
+        if self.cnt == num or front > 2:
+            if direction == None : quit()
+            print(direction)
+            #self.driveMotors(0,0)  
+            self.moving = False 
+            self.test = False
+            self.cnt = 0
+            self.finished_rotation = False
+
+            #atualiza a current position quando acaba o movimento 
+            if direction == "right":
+                self.currentPos[1] = self.currentPos[1] + 1
+            elif direction == "left":
+                self.currentPos[1] = self.currentPos[1] - 1
+            elif direction == "up":
+                self.currentPos[0] = self.currentPos[0] - 1
+            elif direction == "down":
+                self.currentPos[0] = self.currentPos[0] + 1
+            
+            self.fixMissU +=1
+            self.mapping()
+
+            print(self.currentPos)
+            #print(self.alreadyVisited)
+            x = self.currentPos[0]
+            y = self.currentPos[1]
+            self.alreadyVisited.append([x,y]) # já vistou a posição atual
+            
+            if self.fixMissU % 2 == 0: # só em linhas pares é podes haver movimento, ou seja, só em pares é que pode haver caminhos por explorar
+                if direction == "right":
+                    if left < 1 : self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
+                    if right < 1: self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
+                    if front < 1: self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
+                    if back < 1: self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
+                if direction == "left":
+                    if left < 1: self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
+                    if right < 1: self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
+                    if front < 1: self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
+                    if back < 1: self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
+                if direction == "up":
+                    if left < 1: self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
+                    if right < 1: self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
+                    if front < 1: self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
+                    if back < 1: self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
+                if direction == "down":
+                    if left < 1: self.mapping(False, "right") #Posições por explorar, apontar no mapping out e no array
+                    if right < 1: self.mapping(False, "left") #Posições por explorar, apontar no mapping out e no array
+                    if front < 1: self.mapping(False, "down") #Posições por explorar, apontar no mapping out e no array
+                    if back < 1: self.mapping(False, "up") #Posições por explorar, apontar no mapping out e no array
+
+        self.cnt += 1"""
     
     def moveUnknown(self): #movimento até posição U
         front = self.measures.irSensor[0]
@@ -255,53 +385,87 @@ class MyRob(CRobLinkAngs):
             down = x + 1
             right = y + 1
             left = y - 1
-            self.alreadyMoved.append(current)
 
-            #ver map e procurar X à volta e enviar para search tree
-            if self.map[x][right] == "X" and [x,right] not in self.alreadyMoved:
+            #ver map e procurar X à volta e enviar para search tree, se encontrar o U vai guardar em moves
+            if (self.map[x][right] == "X" or self.map[x][right] == "O" or self.map[x][right] == "U") and [current,[x,right]] not in self.alreadyMoved:
                 self.moves.append([current, [x,right], "right" ])
+                self.alreadyMoved.append([current,[x,right]])
                 searchU(self,x,right)
             elif self.map[x][right] == "U": 
                 self.moves.append([current, [x,right], "right" ])
                 self.Ulocation.append([x,right])
-            if self.map[x][left] == "X" and [x,left] not in self.alreadyMoved: 
+            if (self.map[x][left] == "X"  or self.map[x][left] == "O"  or self.map[x][left] == "U" ) and [current,[x,left]] not in self.alreadyMoved: 
                 self.moves.append([current, [x,left], "left"])
+                self.alreadyMoved.append([current,[x,left]])
                 searchU(self,x,left)
             elif self.map[x][left] == "U": 
                 self.moves.append([current, [x,left], "left"])
                 self.Ulocation.append([x,left])
-            if self.map[up][y] == "X" and [up,y] not in self.alreadyMoved:
+            if (self.map[up][y] == "X" or self.map[up][y] == "O" or self.map[up][y] == "U") and [current,[up,y]] not in self.alreadyMoved:
                 self.moves.append([current, [up,y], "up"])
+                self.alreadyMoved.append([current,[up,y]])
                 searchU(self,up,y)
             elif self.map[up][y] == "U": 
                 self.moves.append([current, [up,y], "up"])
                 self.Ulocation.append([up,y])
-            if self.map[down][y] == "X" and [down,y] not in self.alreadyMoved: 
+            if (self.map[down][y] == "X" or self.map[down][y] == "O" or self.map[down][y] == "U") and [current,[down,y]] not in self.alreadyMoved: 
                 self.moves.append([current, [down,y], "down"])
+                self.alreadyMoved.append([current,[down,y]])
                 searchU(self,down,y)
             elif self.map[down][y] == "U": 
                 self.moves.append([current, [down,y], "down"])
                 self.Ulocation.append([down,y])
 
+        #Após já ter todos os moves e as localizações dos U, enviar para a searching tree
         if self.startPath == True and self.path == []:
             
             searchU(self, self.currentPos[0], self.currentPos[1])
             print("Looking")
             self.tree = Unknown(self.moves)
-            p = SearchProblem(self.tree,self.currentPos,self.Ulocation.pop(0))
-            t = SearchTree(p,'uniform')
-            self.path = t.search()
-            self.prevRotate = False
-            print(self.path)
-            print(self.moves)
+
+            tmp = [ b.copy() for b in self.Ulocation ]
+            
+            # se não houver U voltar para a posição inicial
+            if self.Ulocation == [] :
+                p = SearchProblem(self.tree,self.currentPos,[13,27])
+                t = SearchTree(p,'a*')
+                self.path = t.search()
+                self.prevRotate = False
+
+            #porcura qual o U mais proximo da posição atual
+            else:
+                bestLoc = []
+                print(tmp)
+                for a in tmp:
+                    loc = a
+                    if bestLoc == []: bestLoc = loc
+                    else:
+                        x = self.currentPos[0]
+                        y = self.currentPos[1]
+                        xb = bestLoc[0]
+                        yb = bestLoc[1]
+                        xl = loc[0]
+                        yl = loc[1]
+                        if (abs(x - xb) + abs(y - yb)) > (abs(x - xl) + abs(y - yl)): bestLoc = loc
+                
+                print(self.currentPos)
+                print(bestLoc) 
+
+                p = SearchProblem(self.tree,self.currentPos,bestLoc)
+                t = SearchTree(p,'a*')
+                self.path = t.search()
+                self.prevRotate = False
+                print(self.path)
+                print(self.moves)
         
+        #caso tenha havido rotação anteriormente no caminho encontrado pela tree, vai se movimentar para a frente
         elif self.prevRotate:
             self.move()
             self.moving = True
             self.prevRotate = False
 
         elif self.path != []:
-        #ver map e procurar U à volta e mover se encontrar 
+            #seguir o caminho defenido no path até ao U
             if self.startPath: 
                 self.prev = self.path.pop(0)
             direction, coord = self.get_direction()
@@ -310,110 +474,200 @@ class MyRob(CRobLinkAngs):
             actual = self.path.pop(0)
 
             cost = self.tree.cost(0,[self.prev,actual])
-            
-            if cost == "right":
-                if direction == "right":
+
+            x = self.currentPos[0]
+            y = self.currentPos[1]
+
+            current = [x,y]
+            up = x - 1
+            down = x + 1
+            rightM = y + 1
+            leftM = y - 1
+
+            #se encontrar um U pelo caminho dado pela tree, o robot optar por ir para o U encontrado
+            if direction == "right":
+                if self.map[x][rightM] == "U":
+                    self.move()
+                    self.moving = True    
+                    self.nearU = True
+                elif self.map[up][y] == "U":
+                    if left > 0.9:
+                        self.driveMotors(-0.15,-0.15)
+                    else:
+                        self.rotating = self.rotateLeft()
+                        self.nearU = True
+                elif self.map[down][y] == "U": 
+                    if right > 0.9:
+                            self.driveMotors(-0.15,-0.15)
+                    else:
+                        self.rotating = self.rotateRight()
+                        self.nearU = True
+            elif direction == "left":
+                if self.map[x][leftM] == "U":
+                    self.move()
+                    self.moving = True   
+                    self.nearU = True          
+                elif self.map[up][y] == "U":
+                    if right > 0.9:
+                            self.driveMotors(-0.15,-0.15)
+                    else:
+                        self.rotating = self.rotateRight()
+                        self.nearU = True
+                elif self.map[down][y] == "U": 
+                    if left > 0.9:
+                            self.driveMotors(-0.15,-0.15)
+                    else:
+                        self.rotating = self.rotateLeft()
+                        self.nearU = True
+            elif direction == "up":
+                if self.map[x][rightM] == "U":
+                    if right > 0.9:
+                            self.driveMotors(-0.15,-0.15)
+                    else:
+                        self.rotating = self.rotateRight()  
+                        self.nearU = True                
+                elif self.map[up][y] == "U":
+                    self.move()
+                    self.moving = True    
+                    self.nearU = True
+                elif self.map[x][leftM] == "U":
+                    if left > 0.9:
+                            self.driveMotors(-0.15,-0.15)
+                    else:
+                        self.rotating = self.rotateLeft() 
+                        self.nearU = True  
+            elif direction == "down":
+                if self.map[x][rightM] == "U":
+                    if left > 0.9:
+                            self.driveMotors(-0.15,-0.15)
+                    else:
+                        self.rotating = self.rotateLeft()  
+                        self.nearU = True                
+                elif self.map[down][y] == "U":
+                    self.move()
+                    self.moving = True    
+                    self.nearU = True
+                elif self.map[x][leftM] == "U":
+                    if right > 0.9:
+                            self.driveMotors(-0.15,-0.15)
+                    else:
+                        self.rotating = self.rotateRight() 
+                        self.nearU = True
+                    
+            # segue o caminho feito pela tree normalmente senão houver nenhum U pelo caminho
+            if self.nearU == False:
+                if cost == "right":
+                    if direction == "right":
+                        self.move()
+                        self.moving = True
+                    elif direction == "up":
+                        if right > 0.9:
+                            self.overMotor = True
+                            self.driveMotors(-0.15,-0.15)
+                            self.path.insert(0,actual)
+                        else:
+                            self.driveMotors(0.1,-0.1)
+                            self.rotating = self.rotateRight()
+                            self.prevRotate = True
+                    elif direction == "down":
+                        if left > 0.9:
+                            self.overMotor = True
+                            self.driveMotors(-0.15,-0.15)
+                            self.path.insert(0,actual)
+                        else:
+                            self.driveMotors(-0.1,0.1)
+                            self.rotating = self.rotateLeft()
+                            self.prevRotate = True
+                    elif direction == "left":
+                        self.prevRotate = True
+                        self.rotating = self.rotate180()
+                elif cost == "left":
+                    if direction == "left":
+                        self.move()
+                        self.moving = True
+                    elif direction == "up":
+                        if left > 0.9:
+                            self.overMotor = True
+                            self.driveMotors(-0.15,-0.15)
+                            self.path.insert(0,actual)
+                        else:
+                            self.driveMotors(-0.1,0.1)
+                            self.rotating = self.rotateLeft()
+                            self.prevRotate = True
+                    elif direction == "down":
+                        if right > 0.9:
+                            self.overMotor = True
+                            self.driveMotors(-0.15,-0.15)
+                            self.path.insert(0,actual)
+                        else:
+                            self.driveMotors(0.1,-0.1)
+                            self.rotating = self.rotateRight()
+                            self.prevRotate = True
+                    elif direction == "right":
+                        self.prevRotate = True
+                        self.rotating = self.rotate180()
+                elif cost == "up":
+                    if direction == "up":
+                        self.move()
+                        self.moving = True
+                    elif direction == "left":
+                        if right > 0.9:
+                            self.overMotor = True
+                            self.driveMotors(-0.15,-0.15)
+                            self.path.insert(0,actual)
+                        else:
+                            self.driveMotors(0.1,-0.1)
+                            self.rotating = self.rotateRight()
+                            self.prevRotate = True
+                    elif direction == "right":
+                        if left > 0.9:
+                            self.overMotor = True
+                            self.driveMotors(-0.15,-0.15)
+                            self.path.insert(0,actual)
+                        else:
+                            self.driveMotors(-0.1,0.1)
+                            self.rotating = self.rotateLeft()
+                            self.prevRotate = True
+                    elif direction == "down":
+                        self.prevRotate = True
+                        self.rotating = self.rotate180()
+                elif cost == "down":
+                    if direction == "down":
+                        self.move()
+                        self.moving = True
+                    elif direction == "left":
+                        print(left)
+                        if left > 0.9:
+                            self.overMotor = True
+                            self.driveMotors(-0.15,-0.15)
+                            self.path.insert(0,actual)
+                        else:
+                            self.driveMotors(-0.1,0.1)
+                            self.rotating = self.rotateLeft()
+                            self.prevRotate = True
+                    elif direction == "right":
+                        if right > 0.9:
+                            self.overMotor = True
+                            self.driveMotors(-0.15,-0.15)
+                            self.path.insert(0,actual)
+                        else:
+                            self.driveMotors(0.1,-0.1)
+                            self.rotating = self.rotateRight()
+                            self.prevRotate = True
+                    elif direction == "up":
+                        self.prevRotate = True
+                        self.rotating = self.rotate180()
+                else:
                     self.move()
                     self.moving = True
-                elif direction == "up":
-                    if right > 0.7:
-                        self.overMotor = True
-                        self.driveMotors(-0.15,-0.15)
-                        self.path.insert(0,actual)
-                    else:
-                        self.driveMotors(0.1,-0.1)
-                        self.rotating = self.rotateRight()
-                        self.prevRotate = True
-                elif direction == "down":
-                    if left > 0.7:
-                        self.overMotor = True
-                        self.driveMotors(-0.15,-0.15)
-                        self.path.insert(0,actual)
-                    else:
-                        self.driveMotors(-0.1,0.1)
-                        self.rotating = self.rotateLeft()
-                        self.prevRotate = True
-                elif direction == "left":
-                    self.overMotor = True
-                    self.rotate180()
-            elif cost == "left":
-                if direction == "left":
-                    self.move()
-                    self.moving = True
-                elif direction == "up":
-                    if left > 0.7:
-                        self.overMotor = True
-                        self.driveMotors(-0.15,-0.15)
-                        self.path.insert(0,actual)
-                    else:
-                        self.driveMotors(-0.1,0.1)
-                        self.rotating = self.rotateLeft()
-                        self.prevRotate = True
-                elif direction == "down":
-                    if right > 0.7:
-                        self.overMotor = True
-                        self.driveMotors(-0.15,-0.15)
-                        self.path.insert(0,actual)
-                    else:
-                        self.driveMotors(0.1,-0.1)
-                        self.rotating = self.rotateRight()
-                        self.prevRotate = True
-                elif direction == "right":
-                    self.overMotor = True
-                    self.rotate180()
-            elif cost == "up":
-                if direction == "up":
-                    self.move()
-                    self.moving = True
-                elif direction == "left":
-                    if left > 0.7:
-                        self.overMotor = True
-                        self.driveMotors(-0.15,-0.15)
-                        self.path.insert(0,actual)
-                    else:
-                        self.driveMotors(0.1,-0.1)
-                        self.rotating = self.rotateRight()
-                        self.prevRotate = True
-                elif direction == "right":
-                    if left > 0.7:
-                        self.overMotor = True
-                        self.driveMotors(-0.15,-0.15)
-                        self.path.insert(0,actual)
-                    else:
-                        self.driveMotors(-0.1,0.1)
-                        self.rotating = self.rotateLeft()
-                        self.prevRotate = True
-                elif direction == "down":
-                    self.overMotor = True
-                    self.rotate180()
-            elif cost == "down":
-                if direction == "down":
-                    self.move()
-                    self.moving = True
-                elif direction == "left":
-                    if left > 0.7:
-                        self.overMotor = True
-                        self.driveMotors(-0.15,-0.15)
-                        self.path.insert(0,actual)
-                    else:
-                        self.driveMotors(-0.1,0.1)
-                        self.rotating = self.rotateLeft()
-                        self.prevRotate = True
-                elif direction == "right":
-                    if right > 0.7:
-                        self.overMotor = True
-                        self.driveMotors(-0.15,-0.15)
-                        self.path.insert(0,actual)
-                    else:
-                        self.driveMotors(0.1,-0.1)
-                        self.rotating = self.rotateRight()
-                        self.prevRotate = True
-                elif direction == "up":
-                    self.overMotor = True
-                    self.rotate180()
             else:
-                self.move()
-                self.moving = True
+                #dá reset às variaveis se encontrar um U pelo caminho
+                self.nearU = False
+                self.searchU = False
+                self.startPath = True
+                self.alreadyMoved = []
+                self.moves = []
+                self.path = []
 
             if self.overMotor == False:
                 self.prev = actual
@@ -425,10 +679,12 @@ class MyRob(CRobLinkAngs):
 
             
         else:
+            #quando acaba dá reset às variaveis
             self.searchU = False
             self.startPath = True
             self.alreadyMoved = []
             self.moves = []
+            self.path = []
 
 
     def rotate180(self):
@@ -441,8 +697,8 @@ class MyRob(CRobLinkAngs):
 
         if finalangle > 180 :
             finalangle = finalangle - 360
-        if angle != finalangle -1 and self.rotCnt < 159: 
-            self.driveMotors(-0.01, 0.01)
+        if angle != finalangle -1 and self.rotCnt < 16: 
+            self.driveMotors(-0.1, 0.1)
             self.rotCnt += 1
             return 3
         else:
@@ -459,17 +715,18 @@ class MyRob(CRobLinkAngs):
         angle = self.measures.compass + 180
         if angle > 180:
             angle = angle - 360
-        if self.initAngle == None: self.initAngle = self.measures.compass
+        if self.initAngle == None: 
+            #self.rotateFix()
+            self.initAngle = self.measures.compass
         finalangle = self.initAngle + 90 + 180
         if finalangle > 180:
             finalangle = finalangle - 360
 
-        if angle != finalangle - 1 and self.rotCnt < 80: 
-            self.driveMotors(-0.01, 0.01)
+        if angle != finalangle - 1 and self.rotCnt < 8: 
+            self.driveMotors(-0.1, 0.1)
             self.rotCnt += 1
             return 1
         else:
-
             self.driveMotors(0, 0)
             self.initAngle = None
             self.test = False
@@ -481,13 +738,15 @@ class MyRob(CRobLinkAngs):
         angle = self.measures.compass + 180
         if angle > 180:
             angle = angle - 360
-        if self.initAngle == None: self.initAngle = self.measures.compass
+        if self.initAngle == None: 
+            #self.rotateFix()
+            self.initAngle = self.measures.compass
         finalangle = self.initAngle - 90 + 180
         if finalangle > 180 :
             finalangle = finalangle - 360
         
-        if angle != finalangle + 2 and self.rotCnt < 79: 
-            self.driveMotors(0.01, -0.01)
+        if angle != finalangle + 2 and self.rotCnt < 8: 
+            self.driveMotors(0.1, -0.1)
             self.rotCnt += 1
             return 2
         else:
@@ -497,6 +756,31 @@ class MyRob(CRobLinkAngs):
             self.test = False
 
             return 0
+    
+    #apenas podem haver rotações em pontos impares do mapa(mapa do codigo, porque se for o mapping.map é nos pontos pares)
+    def rotateFix(self):
+        direction, coord = self.get_direction()
+
+        if self.currentPos[0] % 2 == 0:
+            if direction == "right":
+                self.currentPos[1] = self.currentPos[1] + 1
+            elif direction == "left":
+                self.currentPos[1] = self.currentPos[1] - 1
+            elif direction == "up":
+                self.currentPos[0] = self.currentPos[0] - 1
+            elif direction == "down":
+                self.currentPos[0] = self.currentPos[0] + 1
+            self.mapping()
+        if self.currentPos[1] % 2 == 0:
+            if direction == "right":
+                self.currentPos[1] = self.currentPos[1] + 1
+            elif direction == "left":
+                self.currentPos[1] = self.currentPos[1] - 1
+            elif direction == "up":
+                self.currentPos[0] = self.currentPos[0] - 1
+            elif direction == "down":
+                self.currentPos[0] = self.currentPos[0] + 1
+            self.mapping()
 
     # returns the direction the robot is facing and a tuple with the coordinates to get to adjacent nodes (front,left,right,back)
     def get_direction(self):
@@ -510,7 +794,7 @@ class MyRob(CRobLinkAngs):
             return "left", [(-2, 0), (0, -2), (0, 2), (2, 0)]
         elif angle in [175,176,177, 178, 179, 180, -179, -178, -177,-176,-175]:
             return "right", [(2, 0), (0, 2), (0, -2), (-2, 0)]
-        elif angle in [84,85,86, 87, 89, 90, 91, 92,93,94,95]:
+        elif angle in [85,86,87, 88, 89, 90, 91, 92,93,94,95]:
             return "down", [(0, -2), (2, 0), (-2, 0), (0, 2)]
         return "None", []
     
@@ -532,8 +816,8 @@ class MyRob(CRobLinkAngs):
 
             if self.map[x][y] == " " :
                 self.map[x][y] = "U"
-                open('mapping.out', 'w').close()
-                fout= open("mapping.out","w")
+                open('mapping.map', 'w').close()
+                fout= open("mapping.map","w")
                 tmp = ""
                 for row in self.map:
                     for line in row:
@@ -543,12 +827,12 @@ class MyRob(CRobLinkAngs):
                 fout.close()
         # Defenir a posição inicial no array
         if inital:
-            open('mapping.out', 'w').close()
+            open('mapping.map', 'w').close()
             
             self.map[14-1][28-1] = "O"
             self.currentPos = [13,27]
 
-            fout= open("mapping.out","w")
+            fout= open("mapping.map","w")
             tmp = ""
             for row in self.map:
                 for line in row:
@@ -558,10 +842,19 @@ class MyRob(CRobLinkAngs):
             fout.close()
         # Apontar a posição atual no array
         else:
-            if self.map[self.currentPos[0]][self.currentPos[1]] != "O" :
-                self.map[self.currentPos[0]][self.currentPos[1]] = "X"
-                open('mapping.out', 'w').close()
-                fout= open("mapping.out","w")
+            if self.map[self.currentPos[0]][self.currentPos[1]] != "O"  and self.map[self.currentPos[0]][self.currentPos[1]] != "1" \
+                and self.map[self.currentPos[0]][self.currentPos[1]] != "2" and self.map[self.currentPos[0]][self.currentPos[1]] != "3":
+
+                if self.measures.ground == 1: 
+                    self.map[self.currentPos[0]][self.currentPos[1]] = "1"
+                elif self.measures.ground == 2:
+                    self.map[self.currentPos[0]][self.currentPos[1]] = "2"
+                elif self.measures.ground == 3:
+                    self.map[self.currentPos[0]][self.currentPos[1]] = "3"
+                else:
+                    self.map[self.currentPos[0]][self.currentPos[1]] = "X"
+                open('mapping.map', 'w').close()
+                fout= open("mapping.map","w")
                 tmp = ""
                 for row in self.map:
                     for line in row:
@@ -570,9 +863,9 @@ class MyRob(CRobLinkAngs):
                 fout.write(tmp)
                 fout.close()
 
+    #vai centar a diração do robot consuante a direção que este esteja
     def centerDirection(self):
         direction, coord = self.get_direction()
-
 
         angle = self.measures.compass + 180
         if angle > 180:
@@ -591,7 +884,7 @@ class MyRob(CRobLinkAngs):
                 self.driveMotors(-0.01, 0.01)
                 return False
             else:
-                self.driveMotors(0, 0)
+                #self.driveMotors(0, 0)
                 return True
         elif direction == "down":
             if angle > 92: 
@@ -601,7 +894,7 @@ class MyRob(CRobLinkAngs):
                 self.driveMotors(-0.01, 0.01)
                 return False
             else:
-                self.driveMotors(0, 0)
+                #self.driveMotors(0, 0)
                 return True
         elif direction == "right":
             if 0 > angle >= -177: 
@@ -611,7 +904,7 @@ class MyRob(CRobLinkAngs):
                 self.driveMotors(-0.01, 0.01)
                 return False
             else:
-                self.driveMotors(0, 0)
+                #self.driveMotors(0, 0)
                 return True
         elif direction == "left":
             if angle > 2: 
@@ -621,8 +914,17 @@ class MyRob(CRobLinkAngs):
                 self.driveMotors(-0.01, 0.01)
                 return False
             else:
-                self.driveMotors(0, 0)
+                #self.driveMotors(0, 0)
                 return True
+    
+    def randNormal(self,  mean,  stdev):
+        x = y = r = 0
+        while True:
+            x = 2 * ( randrange(0,2147483647) / 2147483647 + 1) - 1
+            y = 2 * ( randrange(0,2147483647) / 2147483647 + 1) - 1
+            r = x*x + y*y
+            if(r >1 ): break
+        return x*sqrt((-2*log(r)/r)) * stdev + mean
     
 class Map():
     def __init__(self, filename):
@@ -671,11 +973,9 @@ class Unknown(SearchDomain):
             if C1 == C3 and C2 == C4:
                 return D
         return ""
-    def heuristic(self, goal):
-        for (C1,C2,D) in self.moves:
-            if C2 == goal:
-                return 0
-        return 0
+    def heuristic(self,connect, goal):
+        return abs(connect[0] - goal[0]) + abs(connect[1] - goal[1]) 
+        
     def satisfies(self, connect, goal):
         return goal==connect
 
